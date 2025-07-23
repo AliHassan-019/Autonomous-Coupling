@@ -77,7 +77,7 @@ void loop() {
     moteurActif[i] = abs(erreurs[i]) >= toleranceCm;
   }
 
-  // Commande des moteurs (simultanée)
+  // Commande des moteurs 
   for (int i = 0; i < 6; i++) {
     if (!moteurActif[i]) {
       analogWrite(IN1[i], 0);  // Arrêt
