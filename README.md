@@ -20,9 +20,9 @@ Le traitement des données et la logique de contrôle sont répartis entre une R
 ## Rôle de chaque carte
 **Raspberry Pi 5** :
 
-- Gère les capteurs haut niveau (caméra, IMU, GPS, etc.)
+- Gère les capteurs haut niveau (caméra, IMU, GPS..)
 
-- Calcule les consignes de mouvement (vitesse, position, orientation)
+- Calcule les consignes de mouvement 
 
 - Envoie les consignes vers l’Arduino via UART
 
@@ -32,7 +32,7 @@ Le traitement des données et la logique de contrôle sont répartis entre une R
 
 - Pilote les 6 moteurs via les drivers DRV8871
 
-- Gère le contrôle bas niveau (PWM, direction, etc.)
+- Gère le contrôle bas niveau (PWM, direction, vitesse)
 
 
 
