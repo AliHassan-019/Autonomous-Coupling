@@ -1,4 +1,4 @@
-# Projet d'attelage automatique
+# Projet d'attelage autonome
 
 Ce projet a pour objectif de développer un système d’attelage automatique entre  un tracteur et une remorque grâce au pilotage d’une plateforme de mouvement à six degrés de liberté (6 DOF).
 
