@@ -16,5 +16,31 @@ Le traitement des données et la logique de contrôle sont répartis entre une R
 - Capteurs IMU
 - Ecran tactile
 - plateforme de mouvement(coté mécanique)
+
+## Rôle de chaque carte
+**Raspberry Pi 5** :
+
+- Gère les capteurs haut niveau (caméra, IMU, GPS, etc.)
+
+- Calcule les consignes de mouvement (vitesse, position, orientation)
+
+- Envoie les consignes vers l’Arduino via UART
+
+**Arduino Mega** :
+
+- Reçoit les consignes via UART3
+
+- Pilote les 6 moteurs via les drivers DRV8871
+
+- Gère le contrôle bas niveau (PWM, direction, etc.)
+
+
+
+  ##  État actuel du projet
+
+-  Communication UART entre la Raspberry Pi et l’Arduino Mega 
+-  Envoi de consignes depuis la Raspberry Pi vers l’Arduino
+-  Code fonctionnel pour la lecture de deux capteurs IMU et le calcul de l’orientation relative
+
   
 
