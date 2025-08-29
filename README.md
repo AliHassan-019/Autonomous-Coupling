@@ -105,11 +105,57 @@ ros2 run stewart_control interface_node
 
 
 
-  ###  État actuel du projet
+  
+  ###  📌 État actuel du projet
 
--  Communication UART entre la Raspberry Pi et l’Arduino Mega 
--  Envoi de consignes depuis la Raspberry Pi vers l’Arduino
--  Code fonctionnel pour la lecture de deux capteurs IMU et le calcul de l’orientation relative
+✅ Architecture ROS 2 opérationnelle
+
+Les nœuds aruco_node, IMU_node, stewart_node, et Interface_node fonctionnent ensemble.
+
+Communication ROS 2 stable entre les différents nœuds.
+
+✅ Interface graphique fonctionnelle
+
+Permet de lancer/arrêter le système via des boutons.
+
+Affichage en temps réel des données de position, d’orientation et des longueurs de vérins.
+
+
+✅ Cinématique inverse intégrée
+
+Calcul des longueurs de vérins en fonction de la position et orientation.
+
+Publication sur le topic /longueurs_verins.
+
+✅ Vision par ArUco
+
+Détection des marqueurs et estimation de leurs la position .
+
+✅ Acquisition IMU
+
+ publication des données d’orientation via le topic IMU_error.
+
+✅ Communication Raspberry Pi ↔ Arduino
+
+Liaisons UART fonctionnelles.
+
+Transmission fiable des consignes de vérins vers Arduino.
+
+✅ Commande moteur bas-niveau (Arduino)
+
+Contrôle des 6 moteurs DC via drivers DRV8871.
+
+Réception des consignes ROS et exécution stable.
+
+✅ Plateforme mécanique
+
+Plateforme Stewart 6 en cours de fabrication....
+
+###⚠️ Remarque importante
+
+La calibration de la caméra et de l’IMU n’a pas encore été effectuée.
+
+Les valeurs actuelles (position, orientation) ne sont donc pas fiables à 100 %.
 
   
 
