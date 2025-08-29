@@ -52,7 +52,7 @@ Le projet s’articule autour de **ROS 2 Jazzy** (sur Raspberry Pi) et d’un **
      - `IMU_node` (orientation)
      - `cinematique_inverse` (calcul longueurs vérins)
 2. Les données de **position** (`/aruco_positions`) et d’**orientation** (`/IMU_error`) sont reçues en temps réel.
-3. `cinematique_inverse` calcule les longueurs et publie `/longueurs_verins`.
+3. `` calcule les longueurs et publie `/longueurs_verins`.
 4. L’interface affiche **toutes les données en live**.
 5. Le bouton **Arrêter** stoppe tout sauf l’interface.
 
