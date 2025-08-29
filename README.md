@@ -64,8 +64,7 @@ Le projet s’articule autour de **ROS 2 Jazzy** (sur Raspberry Pi) et d’un **
 | `aruco_node`         | Détection des marqueurs ArUco, publication `/aruco_positions`.          |
 | `IMU_node`           | Lecture et publication des données IMU `/IMU_error`.                    |
 | `stewart_node`       | Calcul des longueurs vérins à partir des positions/orientations.        |
-| `Programme_moteurs`  | Code Arduino exécutant les consignes moteurs envoyées par la pi via
-                         UART3                                                                   |
+| `Programme_moteurs`  | Code Arduino exécutant les consignes moteurs envoyées par la pi via UART3   |
 
 
 ### 🔹 Topics ROS 2
@@ -92,16 +91,16 @@ Le projet s’articule autour de **ROS 2 Jazzy** (sur Raspberry Pi) et d’un **
 
 
 
-##🚀 Utilisation
+### 🚀 Utilisation
 
-1-Lancer uniquement l’interface :
+# 1-Lancer uniquement l’interface :
 ros2 run stewart_control interface_node
 
-2-Cliquer sur Commencer dans l’interface :
+# 2-Cliquer sur Commencer dans l’interface :
 → Les nœuds aruco_node, IMU_node, cinematique_inverse se lancent.
 → Les données sont affichées en temps réel.
 
-3-Cliquer sur Arrêter :
+# 3-Cliquer sur Arrêter :
 → Equivalent à Ctrl+C, stoppe les nœuds sauf l’interface.
 
 
