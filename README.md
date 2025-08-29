@@ -93,20 +93,20 @@ Le projet s’articule autour de **ROS 2 Jazzy** (sur Raspberry Pi) et d’un **
 
 # 🚀 Utilisation
 
-### 1-Lancer uniquement l’interface :
+#### 1-Lancer uniquement l’interface :
 ros2 run stewart_control interface_node
 
-### 2-Cliquer sur Commencer dans l’interface :
+#### 2-Cliquer sur Commencer dans l’interface :
 → Les nœuds aruco_node, IMU_node, cinematique_inverse se lancent.
 → Les données sont affichées en temps réel.
 
-### 3-Cliquer sur Arrêter :
+#### 3-Cliquer sur Arrêter :
 → Equivalent à Ctrl+C, stoppe les nœuds sauf l’interface.
 
 
 
   
-  ###  📌 État actuel du projet
+  ##  📌 État actuel du projet
 
 ✅ Architecture ROS 2 opérationnelle
 
