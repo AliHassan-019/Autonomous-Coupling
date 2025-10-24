@@ -1,6 +1,6 @@
 # Projet d'attelage autonome
 
-Ce projet a pour objectif de développer un système d’attelage automatique entre  un tracteur et une remorque grâce au pilotage d’une plateforme de mouvement à six degrés de liberté (6 DOF).
+Ce projet a pour objectif de développer un système d’attelage automatique entre  un tracteur et une remorque grâce au pilotage d’une plateforme de mouvement à six degrés de liberté (6 DOF) - Stewart platform.
 
 Le système combine plusieurs capteurs  pour estimer précisément la position relative des deux éléments et ajuste en temps réel les mouvements de la plateforme afin d’aligner et d’atteler les véhicules de façon autonome et précise.
 
