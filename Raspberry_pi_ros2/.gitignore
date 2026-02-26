@@ -1,3 +1,29 @@
-build/
-install/
-log/
+# ROS2 build artifacts (anywhere in the workspace)
+**/build/
+**/install/
+**/log/
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# VSCode
+.vscode/
+
+# Arduino compiled files
+Arduino/*.hex
+Arduino/*.bin
+
+# Misc
+*.swp
+*.tmp
+*.bak
