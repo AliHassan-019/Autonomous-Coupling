@@ -24,14 +24,11 @@ class StewartNode(Node):
         )
 
         # Subscribers
-        self.imu_subscription = self.create_subscription(
-            Float32MultiArray, "imu_error", self.imu_callback, 10
+        self.pos_sub = self.create_subscription(
+            Float32MultiArray, "manual_position", self.pos_callback, 10
         )
-        self.pos_subscription = self.create_subscription(
-            Float32MultiArray, "aruco_position", self.position_callback, 10
-        )
-        self.ori_subscription = self.create_subscription(
-            Float32MultiArray, "aruco_orientation", self.orientation_callback, 10
+        self.ori_sub = self.create_subscription(
+            Float32MultiArray, "manual_orientation", self.ori_callback, 10
         )
 
         # Configuration UART vers Arduino
@@ -56,18 +53,14 @@ class StewartNode(Node):
         # Timer pour lecture série
         self.create_timer(0.05, self.read_feedback)
 
-    def position_callback(self, msg):
+    def pos_callback(self, msg):
         if len(msg.data) >= 3:
             self.position = np.array(msg.data)
             self.update_actuators()
 
-    def orientation_callback(self, msg):
+    def ori_callback(self, msg):
         if len(msg.data) >= 3:
             self.orientation = np.array(msg.data)
-            self.update_actuators()
-
-    def imu_callback(self, msg):
-        if len(msg.data) >= 3:
             self.update_actuators()
 
     def update_actuators(self):
@@ -105,9 +98,6 @@ class StewartNode(Node):
 
             if not self.continuous:
                 self.get_logger().info("Consigne envoyée une fois, arrêt du callback.")
-                self.destroy_subscription(self.imu_subscription)
-                self.destroy_subscription(self.pos_subscription)
-                self.destroy_subscription(self.ori_subscription)
 
     def read_feedback(self):
         """Lecture du feedback depuis Arduino et publication ROS2"""
