@@ -1,161 +1,224 @@
 # Projet d'attelage autonome
 
-Ce projet a pour objectif de développer un système d’attelage automatique entre  un tracteur et une remorque grâce au pilotage d’une plateforme de mouvement à six degrés de liberté (6 DOF) - Stewart platform.
+[![CI - Stewart Control](https://github.com/ABMI-software/Demonstrateur_REM/actions/workflows/ci.yml/badge.svg)](https://github.com/ABMI-software/Demonstrateur_REM/actions/workflows/ci.yml)
 
-Le système combine plusieurs capteurs  pour estimer précisément la position relative des deux éléments et ajuste en temps réel les mouvements de la plateforme afin d’aligner et d’atteler les véhicules de façon autonome et précise.
+Ce projet a pour objectif de développer un système d'attelage automatique entre un tracteur et une remorque grâce au pilotage d'une plateforme de mouvement à six degrés de liberté (6 DOF) — Stewart platform.
+
+Le système combine plusieurs capteurs pour estimer précisément la position relative des deux éléments et ajuste en temps réel les mouvements de la plateforme afin d'aligner et d'atteler les véhicules de façon autonome et précise.
 
 Le traitement des données et la logique de contrôle sont répartis entre une Raspberry Pi (calcul et traitement des capteurs) et une carte Arduino (commande des moteurs).
 
-## 🛠️ Matériel utilisé
-| Matériel                | Rôle                                                      |
-|------------------------|-----------------------------------------------------------|
-| **Raspberry Pi 5**     | Exécute ROS 2 Jazzy, traite vision et IMU, calcule consignes. |
-| **Arduino Mega**       | Pilote les 6 moteurs (PWM, direction, vitesse).           |
-| **6 moteurs JGA25370** | Actionnement de la plateforme Stewart.                    |
-| **6 drivers DRV8871**  | Contrôle des moteurs DC.                                  |
-| **Caméra + ArUco**     | Détection de position et orientation.                     |
-| **Capteurs IMU**       | Mesure orientation relative.                              |
-| **Écran tactile**      | Interface utilisateur pour contrôle et monitoring.        |
-| **Plateforme mécanique**| Plateforme Stewart (6 vérins). ( pas encore prete )  
+## 📂 Structure du dépôt
 
+| Dossier               | Contenu                                                              |
+|------------------------|----------------------------------------------------------------------|
+| `Raspberry_pi_ros2/`  | Workspace ROS 2 colcon (nœuds Python, tests, CI/CD, Arduino)        |
+| `Raspberry_pi/`       | Scripts Raspberry Pi hors ROS                                        |
+| `Consignes_Moteurs/`  | Programmes de commande moteur (ancienne version)                     |
+| `imu/`                | Scripts d'acquisition IMU standalone                                 |
+| `consignes_pi.ino`    | Sketch Arduino de consignes                                         |
+
+## 🛠️ Matériel utilisé
+
+| Matériel                 | Rôle                                                               |
+|--------------------------|---------------------------------------------------------------------|
+| **Raspberry Pi 5**       | Exécute ROS 2 Jazzy, traite vision et IMU, calcule consignes.      |
+| **Arduino Mega**         | Pilote les 6 moteurs (PWM, direction, vitesse).                    |
+| **6 moteurs JGA25370**   | Actionnement de la plateforme Stewart.                              |
+| **6 drivers DRV8871**    | Contrôle des moteurs DC.                                            |
+| **Caméra + ArUco**       | Détection de position et orientation (DICT_4X4_50, ID 34/28).      |
+| **2× IMU MPU-9250**      | Mesure orientation relative (I2C 0x68 / 0x69).                     |
+| **Écran tactile**        | Interface utilisateur pour contrôle et monitoring.                  |
+| **Plateforme mécanique** | Plateforme Stewart (6 vérins).                                      |
 
 ## Rôle de chaque carte
+
 **Raspberry Pi 5** :
-
-- Gère les capteurs haut niveau (caméra, IMU, GPS..)
-
-- Calcule les consignes de mouvement 
-
-- Envoie les consignes vers l’Arduino via UART
+- Gère les capteurs haut niveau (caméra, IMU)
+- Calcule les consignes de mouvement (cinématique inverse)
+- Fusion de données capteurs via filtre de Kalman
+- Envoie les consignes vers l'Arduino via UART
 
 **Arduino Mega** :
-
 - Reçoit les consignes via UART3
-
 - Pilote les 6 moteurs via les drivers DRV8871
-
 - Gère le contrôle bas niveau (PWM, direction, vitesse)
-
-
-
 
 ## 🧩 Architecture générale
 
 ![Architecture](docs/architecture.png)
 
-Le projet s’articule autour de **ROS 2 Jazzy** (sur Raspberry Pi) et d’un **Arduino** pour le contrôle bas niveau.
+Le projet s'articule autour de **ROS 2 Jazzy** (sur Raspberry Pi) et d'un **Arduino** pour le contrôle bas niveau.
 
-### 🔹 Flux de données :
-1. `Interface_node` est le **point d’entrée** :
+### 🔹 Flux de données
+
+1. `Interface_node` est le **point d'entrée** :
    - Un clic sur **Commencer** démarre automatiquement :
      - `aruco_node` (vision)
      - `IMU_node` (orientation)
-     - `cinematique_inverse` (calcul longueurs vérins)
-2. Les données de **position** (`/aruco_positions`) et d’**orientation** (`/IMU_error`) sont reçues en temps réel.
-3. `` calcule les longueurs et publie `/longueurs_verins`.
-4. L’interface affiche **toutes les données en live**.
-5. Le bouton **Arrêter** stoppe tout sauf l’interface.
-
+     - `fusion_node` (fusion Kalman)
+     - `stewart_node` (calcul longueurs vérins)
+2. Les données de **position** (`/aruco_positions`) et d'**orientation** (`/IMU_error`) sont reçues en temps réel.
+3. `fusion_node` fusionne les mesures via un **filtre de Kalman 1D** (roll, pitch, yaw).
+4. `stewart_node` calcule les longueurs et publie `/longueurs_verins`.
+5. L'interface affiche **toutes les données en live**.
+6. Le bouton **Arrêter** stoppe tout sauf l'interface.
 
 ### 🔹 Nœuds ROS 2
-| Nœud                 | Rôle                                                                    |
-|----------------------|----------------------------------------------------------------------   |
-| `Interface_node`     | Interface graphique, gestion du système et visualisation en temps réel. |
-| `aruco_node`         | Détection des marqueurs ArUco, publication `/aruco_positions`.          |
-| `IMU_node`           | Lecture et publication des données IMU `/IMU_error`.                    |
-| `stewart_node`       | Calcul des longueurs vérins à partir des positions/orientations.        |
-| `Programme_moteurs`  | Code Arduino exécutant les consignes moteurs envoyées par la pi via UART3   |
 
+| Nœud                 | Rôle                                                                        |
+|----------------------|-----------------------------------------------------------------------------|
+| `Interface_node`     | Interface graphique (PySide6), gestion du système et visualisation live.    |
+| `aruco_node`         | Détection des marqueurs ArUco, publication `/aruco_positions`.              |
+| `IMU_node`           | Lecture 2× MPU-9250 et publication des données IMU `/IMU_error`.            |
+| `fusion_node`        | Fusion Kalman des mesures ArUco + IMU, publication `/fused_orientation`.    |
+| `stewart_node`       | Calcul des longueurs vérins (cinématique inverse 6-DOF).                    |
+| `Programme_moteurs`  | Code Arduino : exécution des consignes moteurs reçues via UART3.            |
 
 ### 🔹 Topics ROS 2
-| Topic                | Publié par              | Contenu                                    |
-|----------------------|------------------------|-------------------------------------------|
-| `/aruco_positions`   | `aruco_node`           | Position (x, y, z).                       |
-| `/IMU_error`         | `IMU_node`             |  orientation IMU (roll, yaw , pitch).     |
-| `/longueurs/verins`  | `stewart_node`         | Longueurs calculées pour chaque vérin.    |
 
+| Topic                 | Publié par       | Contenu                                       |
+|-----------------------|------------------|-----------------------------------------------|
+| `/aruco_positions`    | `aruco_node`     | Position (x, y, z).                           |
+| `/IMU_error`          | `IMU_node`       | Orientation IMU (roll, yaw, pitch).            |
+| `/fused_orientation`  | `fusion_node`    | Orientation fusionnée (filtre de Kalman).      |
+| `/longueurs_verins`   | `stewart_node`   | Longueurs calculées pour chaque vérin.         |
 
+<img width="1619" height="964" alt="Architecture du système" src="https://github.com/user-attachments/assets/4354006b-75d7-4ca8-85bc-1d1d9ccaf691" />
 
+---
 
+## 🚀 Utilisation
 
+```bash
+# 1 — Compiler le workspace ROS 2
+cd Raspberry_pi_ros2
+colcon build --symlink-install
+source install/setup.bash
 
-
-<img width="1619" height="964" alt="image" src="https://github.com/user-attachments/assets/4354006b-75d7-4ca8-85bc-1d1d9ccaf691" />
-
-
-
-
-
-
-
-
-
-
-# 🚀 Utilisation
-
-#### 1-Lancer uniquement l’interface :
+# 2 — Lancer l'interface (point d'entrée)
 ros2 run stewart_control interface_node
 
-#### 2-Cliquer sur Commencer dans l’interface :
-→ Les nœuds aruco_node, IMU_node, cinematique_inverse se lancent.
-→ Les données sont affichées en temps réel.
+# 3 — Ou lancer tous les nœuds via le launch file
+ros2 launch stewart_control stewart_ordered_launch.py
+```
 
-#### 3-Cliquer sur Arrêter :
-→ Equivalent à Ctrl+C, stoppe les nœuds sauf l’interface.
+Dans l'interface :
+- **Commencer** → lance `aruco_node`, `IMU_node`, `fusion_node`, `stewart_node`
+- **Arrêter** → stoppe les nœuds (équivalent Ctrl+C), l'interface reste ouverte
 
+---
 
+## 🧪 Tests
 
-  
-  ##  📌 État actuel du projet
+Le projet inclut **23 tests unitaires** couvrant les modules critiques :
 
-✅ Architecture ROS 2 opérationnelle
+| Fichier                     | Tests | Couverture                                          |
+|-----------------------------|-------|-----------------------------------------------------|
+| `test_inv_kinematics.py`    | 8     | Position home, limites, symétrie, bras, singularités |
+| `test_fusion.py`            | 15    | Kalman predict/update, wrap_deg, convergence, bruit  |
 
-Les nœuds aruco_node, IMU_node, stewart_node, et Interface_node fonctionnent ensemble.
+```bash
+# Installer pytest
+pip install --user pytest
 
-Communication ROS 2 stable entre les différents nœuds.
+# Lancer tous les tests
+cd Raspberry_pi_ros2
+python -m pytest src/stewart_control/test/test_inv_kinematics.py \
+                 src/stewart_control/test/test_fusion.py -v
+```
 
-✅ Interface graphique fonctionnelle
+---
 
-Permet de lancer/arrêter le système via des boutons.
+## ✅ Qualité du code
 
-Affichage en temps réel des données de position, d’orientation et des longueurs de vérins.
+Le projet utilise les outils suivants pour garantir la qualité :
 
+| Outil          | Rôle                                               |
+|----------------|-----------------------------------------------------|
+| **Black**      | Formatage automatique Python (ligne max 88 car.)    |
+| **flake8**     | Linting Python (PEP 8, complexité, erreurs)         |
+| **pre-commit** | Exécution automatique avant chaque commit            |
+| **pytest**     | 23 tests unitaires (cinématique + fusion Kalman)     |
 
-✅ Cinématique inverse intégrée
+### Installation des outils
 
-Calcul des longueurs de vérins en fonction de la position et orientation.
+```bash
+pip install --user pre-commit black flake8 pytest
+cd Raspberry_pi_ros2
+pre-commit install
+pre-commit run --all-files   # vérification initiale
+```
 
-Publication sur le topic /longueurs_verins.
+### Utilisation quotidienne
 
-✅ Vision par ArUco
+Les hooks s'exécutent automatiquement à chaque `git commit`. Pour lancer manuellement :
 
-Détection des marqueurs et estimation de leurs la position .
+```bash
+pre-commit run --all-files
+```
 
-✅ Acquisition IMU
+---
 
- publication des données d’orientation via le topic IMU_error.
+## 🔄 CI/CD — Intégration Continue
 
-✅ Communication Raspberry Pi ↔ Arduino
+Le projet dispose d'un **pipeline GitHub Actions** qui s'exécute automatiquement à chaque push et pull request.
 
-Liaisons UART fonctionnelles.
+### Jobs du pipeline
 
-Transmission fiable des consignes de vérins vers Arduino.
+| Job            | Environnement              | Actions                                          |
+|----------------|----------------------------|--------------------------------------------------|
+| **Lint**       | Ubuntu 24.04               | Black (vérification) + flake8                    |
+| **Unit Tests** | Ubuntu 24.04               | pytest — 23 tests (cinématique + fusion)         |
+| **Build ROS2** | `osrf/ros:jazzy-desktop`   | `colcon build` + `colcon test`                   |
+| **Arduino**    | Ubuntu 24.04               | `arduino-cli compile` (FQBN `arduino:avr:mega`) |
 
-✅ Commande moteur bas-niveau (Arduino)
+Voir le fichier [`Raspberry_pi_ros2/.github/workflows/ci.yml`](Raspberry_pi_ros2/.github/workflows/ci.yml) pour la configuration complète.
 
-Contrôle des 6 moteurs DC via drivers DRV8871.
+---
 
-Réception des consignes ROS et exécution stable.
+## 🌿 Branches Git
 
-✅ Plateforme mécanique
+| Branche            | Rôle                                                    |
+|--------------------|---------------------------------------------------------|
+| `main`             | Version stable et validée                               |
+| `develop-jbantu`   | Branche de développement (fonctionnalités en cours)     |
+| Branches `feature/`| Branches de fonctionnalités individuelles               |
 
-Plateforme Stewart 6 en cours de fabrication....
+### Workflow de contribution
 
-###⚠️ Remarque importante
+1. Créer une branche `feature/...` ou `bugfix/...` depuis `main`.
+2. Développer, formater (`black`), tester (`pytest`).
+3. Pousser et créer une **Pull Request**.
+4. Le pipeline CI valide automatiquement (lint, tests, build, Arduino).
+5. Merge après revue.
 
-La calibration de la caméra et de l’IMU n’a pas encore été effectuée.
+---
 
-Les valeurs actuelles (position, orientation) ne sont donc pas fiables à 100 %.
+## 📌 État actuel du projet
 
-  
+### ✅ Fonctionnalités opérationnelles
 
+- **Architecture ROS 2** — Nœuds `aruco_node`, `IMU_node`, `fusion_node`, `stewart_node` et `Interface_node` fonctionnent ensemble. Communication stable entre les nœuds.
+- **Interface graphique (PySide6)** — Lancement/arrêt du système, affichage temps réel des positions, orientations et longueurs de vérins.
+- **Cinématique inverse** — Calcul des 6 longueurs de vérins en fonction de la position et orientation 6-DOF. Paramètres géométriques : rb=0.075m, rp=0.04m, home=[0, 0, 0.185m].
+- **Fusion de données (Kalman)** — Filtre de Kalman 1D fusionnant les mesures ArUco et IMU (roll, pitch, yaw) avec gestion du wrapping angulaire.
+- **Vision ArUco** — Détection des marqueurs (DICT_4X4_50 : ID 34 fixe, ID 28 mobile) et estimation de position.
+- **Acquisition IMU** — Lecture de 2× MPU-9250 (I2C 0x68/0x69) et publication sur `/IMU_error`.
+- **Communication Raspberry Pi ↔ Arduino** — Liaison UART fonctionnelle, transmission fiable des consignes.
+- **Commande moteur (Arduino)** — Contrôle 6 moteurs DC via DRV8871, réception et exécution des consignes.
+
+### ✅ Bonnes pratiques de développement (février 2026)
+
+- **Pipeline CI/CD** — 4 jobs GitHub Actions (lint, tests, build ROS2, Arduino) — tous au vert ✅
+- **23 tests unitaires** — Cinématique inverse (8 tests) + Fusion Kalman (15 tests) avec pytest.
+- **Formatage automatique** — Black + flake8 + pre-commit hooks.
+- **Versionnement Git** — Stratégie main/develop avec pull requests et revue de code.
+- **Code nettoyé** — Variables renommées, imports inutilisés supprimés, exceptions typées, `fusion_utils.py` extrait pour testabilité.
+
+### ⚠️ Travail restant
+
+- Calibration de la caméra et des IMU (les valeurs actuelles ne sont pas fiables à 100%).
+- Externalisation des constantes dans des fichiers de configuration YAML.
+- Documentation d'architecture complète (diagramme de nœuds/topics).
+- Plateforme mécanique Stewart en cours de fabrication.
