@@ -29,7 +29,8 @@ Le traitement des données et la logique de contrôle sont répartis entre une R
 | **Caméra + ArUco**       | Détection de position et orientation (DICT_4X4_50, ID 34/28).      |
 | **2× IMU MPU-9250**      | Mesure orientation relative (I2C 0x68 / 0x69).                     |
 | **Écran tactile**        | Interface utilisateur pour contrôle et monitoring.                  |
-| **Plateforme mécanique** | Plateforme Stewart (6 vérins).                                      |
+| **Plateforme mécanique** | Plateforme Stewart 6-DOF (6 vérins linéaires) — **montée et testée** ✅ |
+| **Boîtier AttelCore**    | Boîtier de mesure embarqué (Raspberry Pi + écran tactile + arrêt d'urgence) — **monté et testé** ✅ |
 
 ## Rôle de chaque carte
 
@@ -197,7 +198,12 @@ Voir le fichier [`Raspberry_pi_ros2/.github/workflows/ci.yml`](Raspberry_pi_ros2
 
 ## 📌 État actuel du projet
 
-### ✅ Fonctionnalités opérationnelles
+### ✅ Matériel monté et testé (février 2026)
+
+- **Plateforme Stewart** — Plateforme mécanique 6-DOF assemblée avec 6 vérins linéaires (JGA25370 + DRV8871). Montage validé, tests de mouvement effectués.
+- **Boîtier de mesure AttelCore** — Boîtier embarqué intégrant la Raspberry Pi 5, un écran tactile, un bouton d'arrêt d'urgence et les connectiques (Ethernet, USB, alimentation). Monté et opérationnel.
+
+### ✅ Fonctionnalités logicielles opérationnelles
 
 - **Architecture ROS 2** — Nœuds `aruco_node`, `IMU_node`, `fusion_node`, `stewart_node` et `Interface_node` fonctionnent ensemble. Communication stable entre les nœuds.
 - **Interface graphique (PySide6)** — Lancement/arrêt du système, affichage temps réel des positions, orientations et longueurs de vérins.
@@ -221,4 +227,3 @@ Voir le fichier [`Raspberry_pi_ros2/.github/workflows/ci.yml`](Raspberry_pi_ros2
 - Calibration de la caméra et des IMU (les valeurs actuelles ne sont pas fiables à 100%).
 - Externalisation des constantes dans des fichiers de configuration YAML.
 - Documentation d'architecture complète (diagramme de nœuds/topics).
-- Plateforme mécanique Stewart en cours de fabrication.
