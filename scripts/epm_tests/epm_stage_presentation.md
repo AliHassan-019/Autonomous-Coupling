@@ -30,6 +30,17 @@ Ce document synthétise la démarche expérimentale EPM et intègre les derniers
   - CH2 sur shunt.
 - Commande : Arduino via RPWM/LPWM.
 
+## Matériaux utilisés
+- Bobine EPM
+- Arduino Uno
+- Driver BTS7960
+- Alimentation DC réglable
+- Condensateurs (470µF- 1000µF)
+- shunt 10 milli Ohms (fil de cuivre calibré)
+- Oscilloscope
+- Multimètre
+- Breadboard
+
 ## Résultats électriques
 - Inductance mesurée : `L ≈ 10 µH`.
 - Temps théorique pour 35 A à 29 V : `t ≈ 12 µs`.
