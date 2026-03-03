@@ -8,7 +8,6 @@ import math
 import smbus
 from imusensor.MPU9250 import MPU9250
 
-
 # ==============================
 # Fonctions utils
 # ==============================
@@ -16,33 +15,26 @@ def compute_rpy(imu):
     Ax, Ay, Az = imu.AccelVals
     Mx, My, Mz = imu.MagVals
 
-    roll = math.atan2(Ay, Az)
+    roll  = math.atan2(Ay, Az)
     pitch = math.atan2(-Ax, math.sqrt(Ay**2 + Az**2))
 
     Xh = Mx * math.cos(pitch) + Mz * math.sin(pitch)
-    Yh = (
-        Mx * math.sin(roll) * math.sin(pitch)
-        + My * math.cos(roll)
-        - Mz * math.sin(roll) * math.cos(pitch)
-    )
+    Yh = (Mx * math.sin(roll) * math.sin(pitch) +
+          My * math.cos(roll) -
+          Mz * math.sin(roll) * math.cos(pitch))
 
     yaw = math.atan2(-Yh, Xh)
 
     return math.degrees(roll), math.degrees(pitch), math.degrees(yaw)
 
-
 def normalize_angle(angle):
-    while angle > 180:
-        angle -= 360
-    while angle < -180:
-        angle += 360
+    while angle > 180: angle -= 360
+    while angle < -180: angle += 360
     return angle
-
 
 def wrap_deg(a: float) -> float:
     # identique à ton fusion
     return (float(a) + 180.0) % 360.0 - 180.0
-
 
 # ---------- QUATERNIONS ----------
 def euler_zyx_to_quat(roll_deg, pitch_deg, yaw_deg):
@@ -60,54 +52,48 @@ def euler_zyx_to_quat(roll_deg, pitch_deg, yaw_deg):
     z = cr * cp * sy - sr * sp * cy
     return (w, x, yy, z)
 
-
 def quat_conj(q):
     w, x, y, z = q
     return (w, -x, -y, -z)
 
-
 def quat_mul(q1, q2):
     w1, x1, y1, z1 = q1
     w2, x2, y2, z2 = q2
-    w = w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2
-    x = w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2
-    y = w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2
-    z = w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2
+    w = w1*w2 - x1*x2 - y1*y2 - z1*z2
+    x = w1*x2 + x1*w2 + y1*z2 - z1*y2
+    y = w1*y2 - x1*z2 + y1*w2 + z1*x2
+    z = w1*z2 + x1*y2 - y1*x2 + z1*w2
     return (w, x, y, z)
-
 
 def quat_to_euler_zyx(q):
     w, x, y, z = q
 
-    sinr_cosp = 2.0 * (w * x + y * z)
-    cosr_cosp = 1.0 - 2.0 * (x * x + y * y)
+    sinr_cosp = 2.0 * (w*x + y*z)
+    cosr_cosp = 1.0 - 2.0 * (x*x + y*y)
     roll = math.atan2(sinr_cosp, cosr_cosp)
 
-    sinp = 2.0 * (w * y - z * x)
+    sinp = 2.0 * (w*y - z*x)
     if abs(sinp) >= 1.0:
-        pitch = math.copysign(math.pi / 2.0, sinp)
+        pitch = math.copysign(math.pi/2.0, sinp)
     else:
         pitch = math.asin(sinp)
 
-    siny_cosp = 2.0 * (w * z + x * y)
-    cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
+    siny_cosp = 2.0 * (w*z + x*y)
+    cosy_cosp = 1.0 - 2.0 * (y*y + z*z)
     yaw = math.atan2(siny_cosp, cosy_cosp)
 
-    return (
-        wrap_deg(math.degrees(roll)),
-        wrap_deg(math.degrees(pitch)),
-        wrap_deg(math.degrees(yaw)),
-    )
-
+    return (wrap_deg(math.degrees(roll)),
+            wrap_deg(math.degrees(pitch)),
+            wrap_deg(math.degrees(yaw)))
 
 # ==============================
 # Node ROS2
 # ==============================
 class IMUPublisher(Node):
     def __init__(self):
-        super().__init__("imu_error_node")
+        super().__init__('imu_error_node')
 
-        self.pub_imu = self.create_publisher(Float32MultiArray, "imu_error", 10)
+        self.pub_imu = self.create_publisher(Float32MultiArray, 'imu_error', 10)
 
         bus = smbus.SMBus(1)
         self.imu1 = MPU9250.MPU9250(bus, 0x69)
@@ -115,17 +101,13 @@ class IMUPublisher(Node):
         self.imu1.begin()
         self.imu2.begin()
 
-        self.imu1.loadCalibDataFromFile(
-            "/home/rem/ros2_ws/src/stewart_control/stewart_control/calib1.json"
-        )
-        self.imu2.loadCalibDataFromFile(
-            "/home/rem/ros2_ws/src/stewart_control/stewart_control/calib2.json"
-        )
+        self.imu1.loadCalibDataFromFile("/home/rem/ros2_ws/src/stewart_control/stewart_control/calib1.json")
+        self.imu2.loadCalibDataFromFile("/home/rem/ros2_ws/src/stewart_control/stewart_control/calib2.json")
 
         self.get_logger().info("IMU1 & IMU2 initialisées et calibrées ✅")
 
         # ✅ yaw offset AUTO (comme ton idée “yaw moy”)
-        self.AUTO_CALIB_SECONDS = 3.0  # tu peux mettre 2.0 / 5.0
+        self.AUTO_CALIB_SECONDS = 3.0      # tu peux mettre 2.0 / 5.0
         self._t0 = time.time()
         self._yaw_sum = 0.0
         self._yaw_n = 0
@@ -171,7 +153,6 @@ class IMUPublisher(Node):
             f"Yaw(raw): {yaw_rel_raw:.2f}, Yaw(corr): {yaw_rel:.2f}"
         )
 
-
 def main(args=None):
     rclpy.init(args=args)
     node = IMUPublisher()
@@ -179,6 +160,5 @@ def main(args=None):
     node.destroy_node()
     rclpy.shutdown()
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
