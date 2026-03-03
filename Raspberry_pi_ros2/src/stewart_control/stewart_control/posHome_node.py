@@ -5,15 +5,12 @@ from std_msgs.msg import Float32MultiArray
 import serial
 import time
 
-
 class PosHomeNode(Node):
     def __init__(self):
-        super().__init__("pos_home_node")
+        super().__init__('pos_home_node')
 
         # Publisher pour le feedback
-        self.publisher_feedback = self.create_publisher(
-            Float32MultiArray, "feedback_motors", 10
-        )
+        self.publisher_feedback = self.create_publisher(Float32MultiArray, 'feedback_motors', 10)
 
         # Configuration UART
         self.ser = serial.Serial("/dev/ttyACM0", 115200, timeout=1)
@@ -23,7 +20,7 @@ class PosHomeNode(Node):
         self.get_logger().info("Port UART ouvert et prêt.")
 
         # Vecteur à envoyer
-        self.vecteur = [0.10, 0.10, 0.10, 0.10, 0.10, 0.10]
+        self.vecteur = [0.50, 0.50, 0.50, 0.50, 0.50, 0.50]
 
         # Timer pour envoi régulier
         self.create_timer(0.05, self.send_vecteur)
@@ -36,21 +33,17 @@ class PosHomeNode(Node):
 
             # Lecture du feedback et publication
             while self.ser.in_waiting > 0:
-                line = self.ser.readline().decode(errors="ignore").strip()
+                line = self.ser.readline().decode(errors='ignore').strip()
                 if line:
                     try:
-                        feedback = [
-                            float(x) for x in line.split(",") if x.strip() != ""
-                        ]
+                        feedback = [float(x) for x in line.split(',') if x.strip() != '']
                         if len(feedback) == 6:
                             msg = Float32MultiArray()
                             msg.data = feedback
                             self.publisher_feedback.publish(msg)
                             self.get_logger().info(f"Feedback publié : {feedback}")
                         else:
-                            self.get_logger().warn(
-                                f"Ligne série incomplète ignorée : {line}"
-                            )
+                            self.get_logger().warn(f"Ligne série incomplète ignorée : {line}")
                     except ValueError:
                         self.get_logger().warn(f"Ligne série invalide : {line}")
 
@@ -70,6 +63,5 @@ def main(args=None):
         node.destroy_node()
         rclpy.shutdown()
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
