@@ -1,4 +1,4 @@
-# EPM - Support de soutenance (version stagiaire)
+# EPM
 
 Ce document synthétise la démarche expérimentale EPM et intègre les derniers résultats de force de maintien.
 
