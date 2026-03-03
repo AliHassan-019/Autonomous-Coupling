@@ -13,7 +13,7 @@ const int encoderA[6] = {2, 3, 20, 18, 19, 21};
 const int encoderB[6] = {28, 33, 30, 48, 35, 39};
 
 // === POTENTIOMÈTRE ===
-const int potPin = A0;  // Entrée analogique du potentiomètre
+//const int potPin = A0;  // Entrée analogique du potentiomètre
 int potValue = 0;
 int pwmBase = 0;         // Valeur PWM entre 53 et 78
 
@@ -46,13 +46,13 @@ void (*interruptFuncs[6])() = {
 
 void setup() {
   // Tout passe maintenant par Serial (USB)
-  Serial.begin(115200);
+  Serial.begin(115200); 
   inputString.reserve(100);
-
+  
   // Ce message s'affichera sur l'interface de la Raspberry au démarrage
   Serial.println("Arduino connecte via USB - Pret");
 
-  pinMode(potPin, INPUT);
+  //pinMode(potPin, INPUT); 
 
   for (int i = 0; i < 6; i++) {
     pinMode(IN1[i], OUTPUT);
@@ -63,7 +63,7 @@ void setup() {
 
     pid[i] = new PID(&positionCm[i], &pidOutput[i], &positionCibleCm[i], Kp, Ki, Kd, DIRECT);
     pid[i]->SetMode(AUTOMATIC);
-    pid[i]->SetOutputLimits(-53, 53);
+    pid[i]->SetOutputLimits(-150, 150); 
   }
 }
 
@@ -72,8 +72,8 @@ void loop() {
   lireConsignesSerie();
 
   // === 2. RÉGLAGE DE LA VITESSE ===
-  potValue = analogRead(potPin);
-  pwmBase = map(potValue, 0, 1023, 53, 78);
+  //potValue = 70;//analogRead(potPin);
+  pwmBase = 200;//map(potValue, 0, 255, 53, 78);
 
   // === 3. CALCUL PID ET COMMANDE MOTEURS ===
   for (int i = 0; i < 6; i++) {
@@ -110,7 +110,7 @@ void loop() {
     line += String(positionCm[i], 2);
     if (i < 5) line += ",";
   }
-  Serial.println(line);
+  Serial.println(line); 
 
   delay(20);
 }
@@ -130,7 +130,7 @@ void lireConsignesSerie() {
     int index = 0;
     int lastPos = 0;
     inputString += ','; // Séparateur final
-
+    
     for (int i = 0; i < inputString.length(); i++) {
       if (inputString.charAt(i) == ',' && index < 6) {
         String val = inputString.substring(lastPos, i);
@@ -139,10 +139,10 @@ void lireConsignesSerie() {
         index++;
       }
     }
-
+    
     // Feedback de confirmation pour l'interface
-    // Serial.println("Cibles mises a jour !");
-
+    // Serial.println("Cibles mises a jour !"); 
+    
     inputString = "";
     nouvelleConsigne = false;
   }
