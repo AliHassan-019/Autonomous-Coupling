@@ -21,21 +21,21 @@ class ArucoRelativePose(Node):
         super().__init__('aruco_relative_pose')
 
         # -------- Publishers --------
-        self.pub_pos = self.create_publisher(Float32MultiArray, 'aruco_position', 10)
-        self.pub_ori = self.create_publisher(Vector3Stamped, 'aruco_orientation', 10)
-        self.pub_img = self.create_publisher(Image, 'camera/image_raw', 10)
-        self.bridge = CvBridge()
+        self.pub_pos = self.create_publisher(Float32MultiArray, 'aruco_position', 10)  #publisher for position
+        self.pub_ori = self.create_publisher(Vector3Stamped, 'aruco_orientation', 10)  #publisher for orientation
+        self.pub_img = self.create_publisher(Image, 'camera/image_raw', 10)  #publisher for camera
+        self.bridge = CvBridge() # object for converting opencv image type to ros2 message type
 
-        # -------- Caméra --------
+        # -------- Camera --------
         self.cap = cv2.VideoCapture(0)
         if not self.cap.isOpened():
             self.get_logger().error("Caméra introuvable (/dev/video0). Vérifie le câble ou les permissions.")
             return
         else:
-            w = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-            h = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-            fps = self.cap.get(cv2.CAP_PROP_FPS)
-            self.get_logger().info(f"Caméra OK: {w}x{h} @ {fps} fps")
+            w = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH) #reading camera width
+            h = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT) #reading camera height
+            fps = self.cap.get(cv2.CAP_PROP_FPS) #reading camera fps
+            self.get_logger().info(f"Caméra OK: {w}x{h} @ {fps} fps") #printing log statment
 
         # -------- ArUco --------
         self.aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
@@ -43,11 +43,11 @@ class ArucoRelativePose(Node):
 
         # -------- Calibrations (intr & extr) --------
         intr_path, extr_path = self._resolve_calib_paths()
-        self.get_logger().info(f"Calibration intrinsèque: {intr_path}")
-        self.get_logger().info(f"Calibration extrinsèque: {extr_path}")
+        self.get_logger().info(f"Calibration intrinsèque: {intr_path}") #intrinisic caliration files
+        self.get_logger().info(f"Calibration extrinsèque: {extr_path}") #extrinisic caliration files
 
         try:
-            intr = np.load(intr_path)
+            intr = np.load(intr_path) #load int_npz files
             self.mtx = intr['mtx']
             self.dist = intr['dist']
         except Exception as e:
@@ -55,10 +55,10 @@ class ArucoRelativePose(Node):
             return
 
         try:
-            extr = np.load(extr_path)
+            extr = np.load(extr_path) #load ext_npz files
             self.rvec_ext = extr["rvec"].reshape(3,1)
             self.tvec_ext = extr["tvec"].reshape(3,1)
-            self.R_ext, _ = cv2.Rodrigues(self.rvec_ext)
+            self.R_ext, _ = cv2.Rodrigues(self.rvec_ext) #converts rotation vector into rotation matrix
         except Exception as e:
             self.get_logger().error(f"Erreur ouverture {extr_path}: {e}")
             return
@@ -103,7 +103,7 @@ class ArucoRelativePose(Node):
         # Si rien trouvé, renvoie le premier pair (pour log d'erreur clair)
         return candidates[0]
 
-    def rvec_to_euler(self, rvec):
+    def rvec_to_euler(self, rvec): #rotation vector into euler
         R, _ = cv2.Rodrigues(rvec)
         sy = math.sqrt(R[0,0]**2 + R[1,0]**2)
         singular = sy < 1e-6
@@ -117,7 +117,7 @@ class ArucoRelativePose(Node):
             yaw = 0.0
         return [math.degrees(roll), math.degrees(pitch), math.degrees(yaw)]
 
-    def loop(self):
+    def loop(self): #loop runs after every 0.1 sec
         ok, frame = self.cap.read()
         if not ok:
             self.get_logger().warn("frame grab raté")
@@ -136,7 +136,7 @@ class ArucoRelativePose(Node):
 
             # --- Marker FIXE ---
             if self.fixed_id in ids_flat:
-                idx = ids_flat.index(self.fixed_id)
+                idx = ids_flat.index(self.fixed_id) #getting index of fixed index as a referance
                 rvec_f, tvec_f, _ = aruco.estimatePoseSingleMarkers(
                     [corners[idx]], self.marker_size, self.mtx, self.dist
                 )
