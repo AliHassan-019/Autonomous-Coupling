@@ -1,0 +1,103 @@
+# Stewart Platform configuration
+
+# Platform geometry
+stewart_platform:
+  radius_base: 0.075
+  radius_platform: 0.04
+  gamma_base: 11.3
+  gamma_platform: 17.3
+  home_position: [0.0, 0.0, 0.185]
+  L0: [18.86, 18.86, 18.86, 18.86, 18.86, 18.86]
+
+# Serial communication
+serial:
+  port: "/dev/ttyACM0"
+  baudrate: 115200
+  timeout: 1
+  startup_delay: 2.0
+
+# Actuator control
+actuators:
+  length_threshold: 0.2
+  max_displacement: 10.0
+  feedback_timer_period: 0.02
+  home_vector: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  logical_min_cm: 0.0
+  logical_max_cm: 10.0
+  motor_min_cm: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  motor_max_cm: [10.0, 10.0, 10.0, 10.0, 10.0, 10.0]
+
+# Camera and ArUco
+aruco:
+  camera_index: 0
+  camera_backend: "v4l2"
+  camera_width: 640
+  camera_height: 480
+  camera_auto_exposure: "off"
+  camera_exposure: -7.0
+  camera_gain: 0.0
+  camera_brightness: null
+  camera_contrast: null
+  camera_saturation: null
+  camera_sharpness: 3.0
+  camera_auto_wb: null
+  camera_wb_temperature: null
+  camera_autofocus: null
+  camera_focus: null
+  dictionary: "DICT_4X4_1000"
+  marker_size: 0.022
+  single_marker_only: true
+  publish_in_base_frame: false
+  reference_position_m: [0.0, 0.0, 0.0]
+  reference_orientation_deg: [-175.94, 2.26, 4.35]  # Default pose zero reference
+  # Camera axis remapping (similar to IMU) - allows axis swapping/inversion
+  orientation_axis_order: [0, 1, 2]  # [roll, pitch, yaw] -> [roll, pitch, yaw]
+  orientation_axis_sign: [-1, -1, 1] # Invert camera roll/pitch to match IMU direction
+  moving_marker_id: 26
+  fixed_marker_id: 24
+  mobile_marker_id: 26
+  loop_rate: 0.05
+  pose_alpha: 0.22
+  position_deadband_m: 0.0015
+  orientation_deadband_deg: 0.35
+  hold_last_frames: 4
+
+# IMU
+imu:
+  i2c_bus: 1
+  imu_address: 0x68
+  calibration_path: "calib2.json"
+  orientation_axis_order: [0, 1, 2]
+  orientation_axis_sign: [1, 1, 1]
+  reference_orientation_deg: [0.56, -1.31, 86.83]  # Default pose zero reference
+  publish_rate: 0.05
+
+# Sensor fusion
+fusion:
+  kalman_roll:
+    q: 0.02
+    r: 1.0
+  kalman_pitch:
+    q: 0.02
+    r: 1.0
+  kalman_yaw:
+    q: 0.05
+    r: 2.0
+
+automatic_control:
+  enabled: true
+  continuous: true
+  bypass_runtime_state: false
+  stop_tolerance_cm: 1.0
+  invert_marker_pose: false
+  use_marker_orientation: false  # Legacy raw-camera fallback flag
+  use_fused_pose: true           # Primary pose source: camera position + fused orientation
+  use_orientation_control: true  # Use selected/fused roll-pitch-yaw in inverse kinematics
+  command_debounce_s: 0.005
+  position_alpha: 0.2
+  orientation_alpha: 0.15
+  command_alpha: 0.55
+  position_deadband_m: 0.0015
+  orientation_deadband_deg: 0.35
+  command_deadband_cm: 0.12
+  fusion_timeout_s: 0.2

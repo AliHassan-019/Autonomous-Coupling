@@ -1,0 +1,27 @@
+{
+  "created_at_epoch_s": 1777367754.5864382,
+  "camera_index": 0,
+  "resolution": [
+    640,
+    480
+  ],
+  "dictionary": "DICT_4X4_1000",
+  "board": {
+    "squares_x": 6,
+    "squares_y": 9,
+    "square_length_m": 0.03,
+    "marker_length_m": 0.024
+  },
+  "capture": {
+    "min_markers": 6,
+    "min_charuco": 12,
+    "min_sharpness": 80.0,
+    "grid_cols": 4,
+    "grid_rows": 3,
+    "max_per_cell": 6
+  },
+  "results": {
+    "rms_reprojection_error_px": 1.6953870381719212,
+    "accepted_views": 20
+  }
+}
