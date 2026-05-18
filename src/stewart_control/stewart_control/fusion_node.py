@@ -14,6 +14,7 @@ EXPECTED BEHAVIOR:
 """
 
 import rclpy
+import time
 from rclpy.node import Node
 from std_msgs.msg import Float32MultiArray
 
@@ -43,14 +44,21 @@ class FusionNode(Node):
 
         cfg = get_config()
         fus = cfg["fusion"]
+        auto_cfg = cfg.get("automatic_control", {})
 
         self.kf_roll = Kalman1D(q=fus["kalman_roll"]["q"], r=fus["kalman_roll"]["r"])
         self.kf_pitch = Kalman1D(q=fus["kalman_pitch"]["q"], r=fus["kalman_pitch"]["r"])
         self.kf_yaw = Kalman1D(q=fus["kalman_yaw"]["q"], r=fus["kalman_yaw"]["r"])
+        self.camera_timeout_s = float(
+            fus.get("camera_timeout_s", auto_cfg.get("fusion_timeout_s", 0.2))
+        )
 
         self.last_position = None
         self.last_imu = None
         self.last_cam = None
+        self.last_position_time = None
+        self.last_cam_time = None
+        self.camera_pose_valid = False
 
         self.get_logger().info(
             "Fusion node started. Expecting camera position [x, y, z], absolute IMU "
@@ -60,6 +68,7 @@ class FusionNode(Node):
     def position_callback(self, msg):
         if len(msg.data) >= 3:
             self.last_position = list(msg.data[:3])
+            self.last_position_time = time.monotonic()
             self.compute_fusion()
 
     def imu_callback(self, msg):
@@ -68,16 +77,33 @@ class FusionNode(Node):
 
     def cam_callback(self, msg):
         self.last_cam = msg.data
+        self.last_cam_time = time.monotonic()
         self.compute_fusion()
+
+    def _camera_pose_is_fresh(self):
+        if (
+            self.last_position is None
+            or self.last_cam is None
+            or self.last_position_time is None
+            or self.last_cam_time is None
+        ):
+            return False
+
+        now = time.monotonic()
+        return (
+            now - self.last_position_time <= self.camera_timeout_s
+            and now - self.last_cam_time <= self.camera_timeout_s
+        )
 
     def compute_fusion(self):
         if self.last_imu is None:
             return
 
         r_imu, p_imu, y_imu = self.last_imu
+        camera_pose_fresh = self._camera_pose_is_fresh()
 
         # Log sensor inputs for debugging
-        if self.last_cam is not None:
+        if camera_pose_fresh:
             r_cam, p_cam, y_cam = self.last_cam
             self.get_logger().debug(
                 f"FUSION INPUTS - IMU: R={r_imu:.2f} P={p_imu:.2f} Y={y_imu:.2f} | "
@@ -93,17 +119,24 @@ class FusionNode(Node):
         self.kf_pitch.predict(wrap_deg(p_imu))
         self.kf_yaw.predict(wrap_deg(y_imu))
 
-        if self.last_cam is not None:
+        if camera_pose_fresh:
             r_cam, p_cam, y_cam = self.last_cam
             self.kf_roll.update(wrap_deg(r_cam))
             self.kf_pitch.update(wrap_deg(p_cam))
             self.kf_yaw.update(wrap_deg(y_cam))
+        elif self.camera_pose_valid:
+            self.get_logger().warn(
+                "Camera pose is stale or marker detection is lost. "
+                "F_pose will not be published until camera detection recovers."
+            )
 
         msg = Float32MultiArray()
         msg.data = [float(self.kf_roll.x), float(self.kf_pitch.x), float(self.kf_yaw.x)]
         self.pub_fusion.publish(msg)
 
-        if self.last_position is not None:
+        self.camera_pose_valid = camera_pose_fresh
+
+        if camera_pose_fresh:
             pos_msg = Float32MultiArray()
             pos_msg.data = [float(value) for value in self.last_position]
             self.pub_fused_position.publish(pos_msg)
@@ -120,7 +153,7 @@ class FusionNode(Node):
             self.pub_fused_pose.publish(pose_msg)
 
         self.get_logger().info(
-            f"FUSION -> XYZ:{self.last_position if self.last_position is not None else 'N/A'} "
+            f"FUSION -> XYZ:{self.last_position if camera_pose_fresh else 'N/A'} "
             f"R:{self.kf_roll.x:.2f} "
             f"P:{self.kf_pitch.x:.2f} "
             f"Y:{self.kf_yaw.x:.2f}"

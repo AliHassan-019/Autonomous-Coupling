@@ -74,6 +74,7 @@ imu:
 
 # Sensor fusion
 fusion:
+  camera_timeout_s: 0.2
   kalman_roll:
     q: 0.02
     r: 1.0
