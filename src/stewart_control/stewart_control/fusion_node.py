@@ -1,17 +1,4 @@
 #!/usr/bin/env python3
-"""
-Sensor Fusion Node - Combines IMU and Camera Orientation Data
-
-WHY SENSORS DIFFER:
-- IMU: Measures absolute orientation (gravity + magnetic north)
-- Camera: Measures relative orientation (marker-to-marker rotation)
-- Fusion: Kalman filter blends both for best accuracy
-
-EXPECTED BEHAVIOR:
-- Raw sensor values will differ significantly (50-180° on any axis)
-- Fused output provides reliable orientation for control
-- Use F_orientation topic for control, not individual sensors
-"""
 
 import rclpy
 import time

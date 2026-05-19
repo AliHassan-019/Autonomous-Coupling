@@ -1,15 +1,4 @@
 #!/home/rem/rtimulib-env/bin/python3
-"""
-IMU Orientation Node - MPU-9250 Sensor Processing
-
-MEASURES: Absolute orientation using accelerometer + magnetometer
-- Roll/Pitch: From gravity vector (accelerometer)
-- Yaw: From magnetic north (magnetometer)
-- Frame: World coordinates (gravity + magnetic field)
-
-NOTE: Values will differ from camera due to different physics/frames.
-Use fusion_node output for reliable orientation control.
-"""
 
 import math
 import os
