@@ -181,7 +181,7 @@ class IMUPublisher(Node):
         msg.data = [round(roll_abs, 2), round(pitch_abs, 2), round(yaw_abs, 2)]
         self.pub_imu.publish(msg)
 
-        self.get_logger().info(
+        self.get_logger().debug(
             f"IMU PROCESSED: Roll: {roll_abs:.2f}, "
             f"Pitch: {pitch_abs:.2f}, Yaw: {yaw_abs:.2f}"
         )

@@ -139,7 +139,7 @@ class FusionNode(Node):
             ]
             self.pub_fused_pose.publish(pose_msg)
 
-        self.get_logger().info(
+        self.get_logger().debug(
             f"FUSION -> XYZ:{self.last_position if camera_pose_fresh else 'N/A'} "
             f"R:{self.kf_roll.x:.2f} "
             f"P:{self.kf_pitch.x:.2f} "

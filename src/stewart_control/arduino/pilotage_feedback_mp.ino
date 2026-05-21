@@ -4,7 +4,11 @@
 const float ticksParTourSortie = 960.0;
 const float diametrePoulieCm = 2.0;
 const float circonferencePoulie = 3.1416 * diametrePoulieCm;
-const float toleranceCm = 0.3;
+const float stopToleranceCm = 0.10;
+const float restartToleranceCm = 0.25;
+const int pwmMin = 115;
+const int pwmMax = 230;
+const int pwmRampStep = 12;
 
 // === DÉCLARATION DES BROCHES ===
 const int IN1[6]      = {7, 12, 5, 6, 10, 11};     // PWM
@@ -12,19 +16,16 @@ const int IN2[6]      = {26, 27, 32, 34, 23, 25};  // DIR
 const int encoderA[6] = {2, 3, 20, 18, 19, 21};
 const int encoderB[6] = {28, 33, 30, 48, 35, 39};
 
-// === POTENTIOMÈTRE ===
-//const int potPin = A0;  // Entrée analogique du potentiomètre
-int potValue = 0;
-int pwmBase = 0;         // Valeur PWM entre 53 et 78
-
 // === VARIABLES DES MOTEURS ===
 volatile long encoderTicks[6] = {0};
 double positionCm[6] = {0};
 double positionCibleCm[6] = {0};
 double pidOutput[6] = {0};
+int pwmActuel[6] = {0};
+bool moteurActif[6] = {false};
 
 // === PID ===
-double Kp = 2.1, Ki = 0.001, Kd = 0.01;
+double Kp = 45.0, Ki = 0.02, Kd = 1.5;
 PID* pid[6];
 
 // === LECTURE DES CONSIGNES ===
@@ -52,8 +53,6 @@ void setup() {
   // Ce message s'affichera sur l'interface de la Raspberry au démarrage
   Serial.println("Arduino connecte via USB - Pret");
 
-  //pinMode(potPin, INPUT); 
-
   for (int i = 0; i < 6; i++) {
     pinMode(IN1[i], OUTPUT);
     pinMode(IN2[i], OUTPUT);
@@ -63,7 +62,8 @@ void setup() {
 
     pid[i] = new PID(&positionCm[i], &pidOutput[i], &positionCibleCm[i], Kp, Ki, Kd, DIRECT);
     pid[i]->SetMode(AUTOMATIC);
-    pid[i]->SetOutputLimits(-150, 150); 
+    pid[i]->SetSampleTime(20);
+    pid[i]->SetOutputLimits(-pwmMax, pwmMax);
   }
 }
 
@@ -71,11 +71,7 @@ void loop() {
   // === 1. LECTURE DES CONSIGNES DE LA RASPBERRY (VIA USB) ===
   lireConsignesSerie();
 
-  // === 2. RÉGLAGE DE LA VITESSE ===
-  //potValue = 70;//analogRead(potPin);
-  pwmBase = 200;//map(potValue, 0, 255, 53, 78);
-
-  // === 3. CALCUL PID ET COMMANDE MOTEURS ===
+  // === 2. CALCUL PID ET COMMANDE MOTEURS ===
   for (int i = 0; i < 6; i++) {
     noInterrupts();
     long ticks = encoderTicks[i];
@@ -84,26 +80,17 @@ void loop() {
     float tours = (float)ticks / ticksParTourSortie;
     positionCm[i] = tours * circonferencePoulie;
 
+    mettreAJourEtatMoteur(i);
     pid[i]->Compute();
 
-    float erreur = abs(positionCibleCm[i] - positionCm[i]);
-
-    if (erreur < toleranceCm) {
-      analogWrite(IN1[i], 0);
-      digitalWrite(IN2[i], LOW);
+    if (!moteurActif[i]) {
+      arreterMoteur(i);
     } else {
-      int pwm = pwmBase;
-      if (pidOutput[i] > 0) {
-        digitalWrite(IN2[i], LOW);
-        analogWrite(IN1[i], pwm);
-      } else {
-        digitalWrite(IN2[i], HIGH);
-        analogWrite(IN1[i], 255 - pwm);
-      }
+      appliquerCommandeMoteur(i);
     }
   }
 
-  // === 4. ENVOI DU FEEDBACK À L'INTERFACE RASPBERRY (VIA USB) ===
+  // === 3. ENVOI DU FEEDBACK À L'INTERFACE RASPBERRY (VIA USB) ===
   // On envoie les positions réelles pour que l'interface les affiche
   String line = "";
   for (int i = 0; i < 6; i++) {
@@ -113,6 +100,45 @@ void loop() {
   Serial.println(line); 
 
   delay(20);
+}
+
+void mettreAJourEtatMoteur(int i) {
+  float erreurFinale = abs(positionCibleCm[i] - positionCm[i]);
+
+  if (moteurActif[i] && erreurFinale <= stopToleranceCm) {
+    moteurActif[i] = false;
+    return;
+  }
+
+  if (!moteurActif[i] && erreurFinale >= restartToleranceCm) {
+    moteurActif[i] = true;
+  }
+}
+
+void arreterMoteur(int i) {
+  pwmActuel[i] = 0;
+  analogWrite(IN1[i], 0);
+  digitalWrite(IN2[i], LOW);
+}
+
+void appliquerCommandeMoteur(int i) {
+  float erreur = positionCibleCm[i] - positionCm[i];
+  float erreurAbs = abs(erreur);
+
+  int pwmCible = constrain(pwmMin + (int)(erreurAbs * 35.0), pwmMin, pwmMax);
+  if (pwmActuel[i] < pwmCible) {
+    pwmActuel[i] = min(pwmActuel[i] + pwmRampStep, pwmCible);
+  } else if (pwmActuel[i] > pwmCible) {
+    pwmActuel[i] = max(pwmActuel[i] - pwmRampStep, pwmCible);
+  }
+
+  if (erreur > 0) {
+    digitalWrite(IN2[i], LOW);
+    analogWrite(IN1[i], pwmActuel[i]);
+  } else {
+    digitalWrite(IN2[i], HIGH);
+    analogWrite(IN1[i], 255 - pwmActuel[i]);
+  }
 }
 
 // === Fonction de lecture modifiée pour Serial (USB) ===
@@ -134,7 +160,11 @@ void lireConsignesSerie() {
     for (int i = 0; i < inputString.length(); i++) {
       if (inputString.charAt(i) == ',' && index < 6) {
         String val = inputString.substring(lastPos, i);
-        positionCibleCm[index] = val.toFloat();
+        float nouvelleCible = val.toFloat();
+        positionCibleCm[index] = nouvelleCible;
+        if (abs(nouvelleCible - positionCm[index]) >= stopToleranceCm) {
+          moteurActif[index] = true;
+        }
         lastPos = i + 1;
         index++;
       }

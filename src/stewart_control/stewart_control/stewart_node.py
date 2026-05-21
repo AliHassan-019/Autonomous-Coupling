@@ -17,6 +17,8 @@ class StewartNode(Node):
     HOME_TOLERANCE_CM = 0.3
     HOME_STABLE_READS = 5
     SHUTDOWN_TIMEOUT_S = 20.0
+    SERIAL_READ_MAX_LINES = 5
+    FEEDBACK_STATE_SAVE_INTERVAL_S = 1.0
 
     def __init__(self):
         super().__init__("stewart_node")
@@ -133,6 +135,7 @@ class StewartNode(Node):
             self.bypass_runtime_state or self.runtime_state.begin_motion_session()
         )
         self.latest_feedback = None
+        self.last_feedback_state_save_time = 0.0
 
         if self.bypass_runtime_state:
             self.get_logger().warn(
@@ -390,10 +393,24 @@ class StewartNode(Node):
                 self.destroy_subscription(self.fusion_subscription)
                 self.destroy_subscription(self.fused_pose_subscription)
 
-    def read_feedback(self):
+    def _record_feedback_state_if_due(self, feedback):
+        now = time.monotonic()
+        if (
+            now - self.last_feedback_state_save_time
+        ) < self.FEEDBACK_STATE_SAVE_INTERVAL_S:
+            return
+
+        self.runtime_state.record_feedback(feedback)
+        self.last_feedback_state_save_time = now
+
+    def read_feedback(self, max_lines=SERIAL_READ_MAX_LINES):
         """Lecture du feedback depuis Arduino et publication ROS2"""
-        while self.ser.in_waiting > 0:
+        lines_read = 0
+        while self.ser.in_waiting > 0 and (
+            max_lines is None or lines_read < max_lines
+        ):
             line = self.ser.readline().decode(errors="ignore").strip()
+            lines_read += 1
 
             if not line or "," not in line:
                 continue
@@ -409,7 +426,7 @@ class StewartNode(Node):
                 msg.data = feedback
                 self.publisher_feedback.publish(msg)
                 self.latest_feedback = feedback
-                self.runtime_state.record_feedback(feedback)
+                self._record_feedback_state_if_due(feedback)
                 self.get_logger().debug(f"Feedback reçu : {feedback}")
 
             except ValueError:
@@ -431,7 +448,7 @@ class StewartNode(Node):
         while time.monotonic() < deadline:
             self.ser.write(command.encode())
             time.sleep(0.05)
-            self.read_feedback()
+            self.read_feedback(max_lines=None)
 
             if self.latest_feedback is None:
                 continue
