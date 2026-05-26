@@ -23,16 +23,15 @@ class Kalman1D:
         self.P = 1.0
         self.Q = float(q)
         self.R = float(r)
+        self.initialized = False
 
-    def predict(self, x_pred):
+    def predict(self, x_pred=None):
         """
         Étape de prédiction.
-
-        Args:
-            x_pred: Prédiction de l'état (degré)
         """
-        self.x = wrap_deg(float(x_pred))
         self.P = self.P + self.Q
+        if x_pred is not None:
+            self.update(x_pred)
 
     def update(self, z):
         """
@@ -42,6 +41,11 @@ class Kalman1D:
             z: Mesure (degré)
         """
         z = wrap_deg(float(z))
+        if not self.initialized:
+            self.x = z
+            self.initialized = True
+            return
+
         y = wrap_deg(z - self.x)
         S = self.P + self.R
         if S <= 1e-12:

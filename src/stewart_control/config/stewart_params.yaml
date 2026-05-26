@@ -75,6 +75,7 @@ imu:
 # Sensor fusion
 fusion:
   camera_timeout_s: 0.2
+  orientation_hold_deadband_deg: 0.4
   kalman_roll:
     q: 0.02
     r: 1.0
@@ -99,6 +100,6 @@ automatic_control:
   orientation_alpha: 0.15
   command_alpha: 0.55
   position_deadband_m: 0.0015
-  orientation_deadband_deg: 0.35
-  command_deadband_cm: 0.12
+  orientation_deadband_deg: 0.5
+  command_deadband_cm: 0.15
   fusion_timeout_s: 0.2

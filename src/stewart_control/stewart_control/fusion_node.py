@@ -39,6 +39,9 @@ class FusionNode(Node):
         self.camera_timeout_s = float(
             fus.get("camera_timeout_s", auto_cfg.get("fusion_timeout_s", 0.2))
         )
+        self.orientation_hold_deadband_deg = float(
+            fus.get("orientation_hold_deadband_deg", 0.4)
+        )
 
         self.last_position = None
         self.last_imu = None
@@ -46,6 +49,7 @@ class FusionNode(Node):
         self.last_position_time = None
         self.last_cam_time = None
         self.camera_pose_valid = False
+        self.last_published_orientation = None
 
         self.get_logger().info(
             "Fusion node started. Expecting camera position [x, y, z], absolute IMU "
@@ -82,6 +86,26 @@ class FusionNode(Node):
             and now - self.last_cam_time <= self.camera_timeout_s
         )
 
+    def _hold_small_orientation_changes(self, orientation):
+        orientation = [wrap_deg(value) for value in orientation]
+        if self.last_published_orientation is None:
+            self.last_published_orientation = orientation
+            return orientation
+
+        held_orientation = []
+        changed = False
+        for previous, current in zip(self.last_published_orientation, orientation):
+            if abs(wrap_deg(current - previous)) <= self.orientation_hold_deadband_deg:
+                held_orientation.append(previous)
+            else:
+                held_orientation.append(current)
+                changed = True
+
+        if changed:
+            self.last_published_orientation = held_orientation
+
+        return held_orientation
+
     def compute_fusion(self):
         if self.last_imu is None:
             return
@@ -102,9 +126,12 @@ class FusionNode(Node):
                 f"CAMERA: N/A"
             )
 
-        self.kf_roll.predict(wrap_deg(r_imu))
-        self.kf_pitch.predict(wrap_deg(p_imu))
-        self.kf_yaw.predict(wrap_deg(y_imu))
+        self.kf_roll.predict()
+        self.kf_pitch.predict()
+        self.kf_yaw.predict()
+        self.kf_roll.update(wrap_deg(r_imu))
+        self.kf_pitch.update(wrap_deg(p_imu))
+        self.kf_yaw.update(wrap_deg(y_imu))
 
         if camera_pose_fresh:
             r_cam, p_cam, y_cam = self.last_cam
@@ -117,8 +144,12 @@ class FusionNode(Node):
                 "F_pose will not be published until camera detection recovers."
             )
 
+        fused_orientation = self._hold_small_orientation_changes(
+            [self.kf_roll.x, self.kf_pitch.x, self.kf_yaw.x]
+        )
+
         msg = Float32MultiArray()
-        msg.data = [float(self.kf_roll.x), float(self.kf_pitch.x), float(self.kf_yaw.x)]
+        msg.data = [float(value) for value in fused_orientation]
         self.pub_fusion.publish(msg)
 
         self.camera_pose_valid = camera_pose_fresh
@@ -133,17 +164,17 @@ class FusionNode(Node):
                 float(self.last_position[0]),
                 float(self.last_position[1]),
                 float(self.last_position[2]),
-                float(self.kf_roll.x),
-                float(self.kf_pitch.x),
-                float(self.kf_yaw.x),
+                float(fused_orientation[0]),
+                float(fused_orientation[1]),
+                float(fused_orientation[2]),
             ]
             self.pub_fused_pose.publish(pose_msg)
 
         self.get_logger().debug(
             f"FUSION -> XYZ:{self.last_position if camera_pose_fresh else 'N/A'} "
-            f"R:{self.kf_roll.x:.2f} "
-            f"P:{self.kf_pitch.x:.2f} "
-            f"Y:{self.kf_yaw.x:.2f}"
+            f"R:{fused_orientation[0]:.2f} "
+            f"P:{fused_orientation[1]:.2f} "
+            f"Y:{fused_orientation[2]:.2f}"
         )
 
 
