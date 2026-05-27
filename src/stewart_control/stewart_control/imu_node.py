@@ -105,6 +105,7 @@ def resolve_calibration_path(configured_path: str, filename: str) -> str:
 
     searched = "\n".join(f" - {path}" for path in seen)
     raise FileNotFoundError(
+        
         f"Unable to find IMU calibration file '{filename}'. Searched:\n{searched}"
     )
 

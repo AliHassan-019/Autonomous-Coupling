@@ -49,10 +49,10 @@ aruco:
   single_marker_only: true
   publish_in_base_frame: false
   reference_position_m: [0.0, 0.0, 0.0]
-  reference_orientation_deg: [-175.94, 2.26, 4.35]  # Default pose zero reference
+  reference_orientation_deg: [-173.8, 2.7, -0.8]  # Default pose zero reference
   # Camera axis remapping (similar to IMU) - allows axis swapping/inversion
-  orientation_axis_order: [0, 1, 2]  # [roll, pitch, yaw] -> [roll, pitch, yaw]
-  orientation_axis_sign: [-1, -1, 1] # Invert camera roll/pitch to match IMU direction
+  orientation_axis_order: [0, 1, 2]  # 
+  orientation_axis_sign: [-1, -1, 1] 
   moving_marker_id: 26
   fixed_marker_id: 24
   mobile_marker_id: 26
@@ -69,7 +69,7 @@ imu:
   calibration_path: "calib2.json"
   orientation_axis_order: [0, 1, 2]
   orientation_axis_sign: [1, 1, 1]
-  reference_orientation_deg: [0.56, -1.31, 86.83]  # Default pose zero reference
+  reference_orientation_deg: [-0.02, -0.12, 66.43]  # Default pose zero reference
   publish_rate: 0.05
 
 # Sensor fusion
@@ -92,9 +92,9 @@ automatic_control:
   bypass_runtime_state: false
   stop_tolerance_cm: 1.0
   invert_marker_pose: false
-  use_marker_orientation: false  # Legacy raw-camera fallback flag
-  use_fused_pose: true           # Primary pose source: camera position + fused orientation
-  use_orientation_control: true  # Use selected/fused roll-pitch-yaw in inverse kinematics
+  use_marker_orientation: false  
+  use_fused_pose: true            
+  use_orientation_control: true  
   command_debounce_s: 0.005
   position_alpha: 0.2
   orientation_alpha: 0.15

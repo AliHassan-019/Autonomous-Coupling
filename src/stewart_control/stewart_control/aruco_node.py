@@ -1,15 +1,4 @@
 #!/home/rem/rtimulib-env/bin/python3
-"""
-ArUco Camera Node - Vision-based Pose Estimation
-
-MEASURES: Relative orientation between ArUco markers
-- Uses solvePnP to estimate marker poses
-- Frame: Marker-to-marker relative coordinates
-- Physics: Purely visual (no gravity/magnetic dependencies)
-
-NOTE: Values will differ from IMU due to different physics/frames.
-Use fusion_node output for reliable orientation control.
-"""
 
 import rclpy
 from rclpy.node import Node
@@ -274,11 +263,14 @@ class ArucoRelativePose(Node):
         self.get_logger().info(
             "Using camera reference pose "
             f"XYZ={self.reference_position.tolist()} m "
+        
+        
             f"RPY={self.reference_orientation.tolist()} deg."
         )
 
     def rvec_to_euler(self, rvec):
         R, _ = cv2.Rodrigues(rvec)
+        
         sy = math.sqrt(R[0, 0] ** 2 + R[1, 0] ** 2)
         singular = sy < 1e-6
         if not singular:
