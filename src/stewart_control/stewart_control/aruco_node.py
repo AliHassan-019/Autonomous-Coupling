@@ -11,6 +11,8 @@ import cv2.aruco as aruco
 import numpy as np
 import math
 import os
+import threading
+import time
 from ament_index_python.packages import get_package_share_directory
 from stewart_control.config_loader import get_config
 
@@ -44,6 +46,7 @@ def create_detector_parameters():
         parameters.adaptiveThreshWinSizeStep = 4
     if hasattr(parameters, "minMarkerPerimeterRate"):
         parameters.minMarkerPerimeterRate = 0.02
+        
     if hasattr(parameters, "maxMarkerPerimeterRate"):
         parameters.maxMarkerPerimeterRate = 4.0
     if hasattr(parameters, "minCornerDistanceRate"):
@@ -172,6 +175,8 @@ def draw_alignment_overlay(frame, marker_corners=None):
 
 
 class ArucoRelativePose(Node):
+    CAMERA_READ_WARN_S = 0.5
+    CAMERA_REOPEN_DELAY_S = 0.25
 
     def __init__(self):
         super().__init__("aruco_relative_pose")
@@ -205,8 +210,18 @@ class ArucoRelativePose(Node):
 
         camera_index = int(aruco_cfg.get("camera_index", 0))
         camera_backend = str(aruco_cfg.get("camera_backend", "any")).lower()
-        self.cap = cv2.VideoCapture(camera_index, BACKEND_MAP.get(camera_backend, cv2.CAP_ANY))
-        apply_camera_settings(self.cap, camera_cfg)
+        self.camera_index = camera_index
+        self.camera_backend = BACKEND_MAP.get(camera_backend, cv2.CAP_ANY)
+        self.camera_cfg = camera_cfg
+        self.camera_reopen_failures = int(aruco_cfg.get("camera_reopen_failures", 3))
+        self.camera_watchdog_timeout_s = float(
+            aruco_cfg.get("camera_watchdog_timeout_s", 6.0)
+        )
+        self.camera_read_failures = 0
+        self.last_camera_frame_time = time.monotonic()
+        self._watchdog_stop = threading.Event()
+
+        self.cap = self._open_camera()
         if not self.cap.isOpened():
             self.get_logger().error("Erreur : impossible d'ouvrir la caméra.")
             return
@@ -260,6 +275,12 @@ class ArucoRelativePose(Node):
 
         # Timer ROS2
         self.timer = self.create_timer(aruco_cfg["loop_rate"], self.loop)
+        self._watchdog_thread = threading.Thread(
+            target=self._camera_watchdog_loop,
+            name="aruco-camera-watchdog",
+            daemon=True,
+        )
+        self._watchdog_thread.start()
         self.get_logger().info(
             "Using camera reference pose "
             f"XYZ={self.reference_position.tolist()} m "
@@ -267,6 +288,66 @@ class ArucoRelativePose(Node):
         
             f"RPY={self.reference_orientation.tolist()} deg."
         )
+
+    def _open_camera(self):
+        cap = cv2.VideoCapture(self.camera_index, self.camera_backend)
+        if hasattr(cv2, "CAP_PROP_READ_TIMEOUT_MSEC"):
+            cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 1000)
+        if hasattr(cv2, "CAP_PROP_OPEN_TIMEOUT_MSEC"):
+            cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 1000)
+        apply_camera_settings(cap, self.camera_cfg)
+        return cap
+
+    def _reopen_camera(self):
+        self.get_logger().warn("Camera read failed repeatedly; reopening camera.")
+        try:
+            self.cap.release()
+        except Exception as exc:
+            self.get_logger().warn(f"Camera release during reopen failed: {exc}")
+
+        time.sleep(self.CAMERA_REOPEN_DELAY_S)
+        self.cap = self._open_camera()
+        self.camera_read_failures = 0
+        if not self.cap.isOpened():
+            self.get_logger().error("Camera reopen failed.")
+            return False
+
+        self.last_camera_frame_time = time.monotonic()
+        self.get_logger().info("Camera reopened successfully.")
+        return True
+
+    def _read_camera_frame(self):
+        started = time.monotonic()
+        ret, frame = self.cap.read()
+        elapsed = time.monotonic() - started
+
+        if elapsed > self.CAMERA_READ_WARN_S:
+            self.get_logger().warn(
+                f"Slow camera read: {elapsed:.2f}s. USB/V4L2 may be stalling."
+            )
+
+        if ret:
+            self.camera_read_failures = 0
+            self.last_camera_frame_time = time.monotonic()
+            return True, frame
+
+        self.camera_read_failures += 1
+        if self.camera_read_failures >= self.camera_reopen_failures:
+            self._reopen_camera()
+
+        return False, None
+
+    def _camera_watchdog_loop(self):
+        while not self._watchdog_stop.wait(1.0):
+            stale_s = time.monotonic() - self.last_camera_frame_time
+            if stale_s <= self.camera_watchdog_timeout_s:
+                continue
+
+            self.get_logger().fatal(
+                "Camera watchdog timeout: no frame published for "
+                f"{stale_s:.1f}s. Exiting aruco_node so launch can respawn it."
+            )
+            os._exit(3)
 
     def rvec_to_euler(self, rvec):
         R, _ = cv2.Rodrigues(rvec)
@@ -432,7 +513,7 @@ class ArucoRelativePose(Node):
         return True
 
     def loop(self):
-        ret, frame = self.cap.read()
+        ret, frame = self._read_camera_frame()
         if not ret:
             return
         overlay_drawn = False
@@ -560,7 +641,12 @@ class ArucoRelativePose(Node):
         self.pub_img.publish(img_msg)
 
     def destroy_node(self):
-        self.cap.release()
+        if hasattr(self, "_watchdog_stop"):
+            self._watchdog_stop.set()
+        if hasattr(self, "_watchdog_thread") and self._watchdog_thread.is_alive():
+            self._watchdog_thread.join(timeout=1.0)
+        if hasattr(self, "cap"):
+            self.cap.release()
         super().destroy_node()
 
 

@@ -250,7 +250,7 @@ class MotorPlotWidget(QWidget):
 
 class InterfaceGUI(QWidget):
     PLOT_UPDATE_INTERVAL_S = 0.10
-    CAMERA_UPDATE_INTERVAL_S = 0.08
+    CAMERA_UPDATE_INTERVAL_S = 0.03
     MOTION_STOP_TIMEOUT_S = 30
     MANUAL_STARTUP_DELAY_MS = 1200
 
@@ -994,35 +994,35 @@ class InterfaceNode(Node):
         self.gui = gui
         self.bridge = CvBridge()
         self.create_subscription(
-            Float32MultiArray, "imu_error", self.gui.imu_callback, 10
+            Float32MultiArray, "imu_error", self.gui.imu_callback, 1
         )
         self.create_subscription(
-            Float32MultiArray, "F_orientation", self.gui.fusion_callback, 10
+            Float32MultiArray, "F_orientation", self.gui.fusion_callback, 1
         )
         self.create_subscription(
-            Float32MultiArray, "stewart/longueurs", self.gui.verins_callback, 10
+            Float32MultiArray, "stewart/longueurs", self.gui.verins_callback, 1
         )
         self.create_subscription(
-            Float32MultiArray, "feedback_motors", self.gui.feedback_callback, 10
+            Float32MultiArray, "feedback_motors", self.gui.feedback_callback, 1
         )
         self.create_subscription(
             String, "stewart_status", self.gui.stewart_status_callback, 10
         )
         self.create_subscription(
-            Float32MultiArray, "aruco_position", self.gui.aruco_callback, 10
+            Float32MultiArray, "aruco_position", self.gui.aruco_callback, 1
         )
-        self.create_subscription(Image, "camera/image_raw", self.gui.image_callback, 10)
+        self.create_subscription(Image, "camera/image_raw", self.gui.image_callback, 1)
         self.create_subscription(
             Float32MultiArray,
             "aruco_orientation",
             self.gui.aruco_orientation_callback,
-            10,
+            1,
         )
         self.gui.pos_pub = self.create_publisher(
-            Float32MultiArray, "manual_position", 10
+            Float32MultiArray, "manual_position", 1
         )
         self.gui.ori_pub = self.create_publisher(
-            Float32MultiArray, "manual_orientation", 10
+            Float32MultiArray, "manual_orientation", 1
         )
         self.gui.node = self
 

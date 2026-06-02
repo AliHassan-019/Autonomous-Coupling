@@ -30,11 +30,13 @@ actuators:
 # Camera and ArUco
 aruco:
   camera_index: 0
+  camera_device: "/dev/video0"
   camera_backend: "v4l2"
   camera_width: 640
   camera_height: 480
-  camera_auto_exposure: "off"
-  camera_exposure: -7.0
+  camera_fourcc: "MJPG"
+  camera_auto_exposure: null
+  camera_exposure: null
   camera_gain: 0.0
   camera_brightness: null
   camera_contrast: null
@@ -44,6 +46,14 @@ aruco:
   camera_wb_temperature: null
   camera_autofocus: null
   camera_focus: null
+  camera_v4l2_auto_exposure: 1
+  camera_v4l2_exposure_dynamic_framerate: 0
+  camera_v4l2_exposure_time_absolute: 157
+  camera_v4l2_gain: 0
+  camera_v4l2_auto_wb: 1
+  camera_v4l2_wb_temperature: null
+  camera_reopen_failures: 3
+  camera_watchdog_timeout_s: 6.0
   dictionary: "DICT_4X4_1000"
   marker_size: 0.022
   single_marker_only: true
@@ -56,11 +66,11 @@ aruco:
   moving_marker_id: 26
   fixed_marker_id: 24
   mobile_marker_id: 26
-  loop_rate: 0.05
+  loop_rate: 0.03
   pose_alpha: 0.22
   position_deadband_m: 0.0015
   orientation_deadband_deg: 0.35
-  hold_last_frames: 4
+  hold_last_frames: 0
 
 # IMU
 imu:

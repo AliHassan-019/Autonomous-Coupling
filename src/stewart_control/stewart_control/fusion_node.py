@@ -14,20 +14,20 @@ class FusionNode(Node):
         super().__init__("fusion_node")
 
         self.sub_pos = self.create_subscription(
-            Float32MultiArray, "aruco_position", self.position_callback, 10
+            Float32MultiArray, "aruco_position", self.position_callback, 1
         )
         self.sub_imu = self.create_subscription(
-            Float32MultiArray, "imu_error", self.imu_callback, 10
+            Float32MultiArray, "imu_error", self.imu_callback, 1
         )
         self.sub_cam = self.create_subscription(
-            Float32MultiArray, "aruco_orientation", self.cam_callback, 10
+            Float32MultiArray, "aruco_orientation", self.cam_callback, 1
         )
 
-        self.pub_fusion = self.create_publisher(Float32MultiArray, "F_orientation", 10)
+        self.pub_fusion = self.create_publisher(Float32MultiArray, "F_orientation", 1)
         self.pub_fused_position = self.create_publisher(
-            Float32MultiArray, "F_position", 10
+            Float32MultiArray, "F_position", 1
         )
-        self.pub_fused_pose = self.create_publisher(Float32MultiArray, "F_pose", 10)
+        self.pub_fused_pose = self.create_publisher(Float32MultiArray, "F_pose", 1)
 
         cfg = get_config()
         fus = cfg["fusion"]

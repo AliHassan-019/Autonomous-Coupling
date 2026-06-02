@@ -27,7 +27,7 @@ class PosHomeNode(Node):
 
         # Publisher pour le feedback
         self.publisher_feedback = self.create_publisher(
-            Float32MultiArray, "feedback_motors", 10
+            Float32MultiArray, "feedback_motors", 1
         )
 
         # Configuration UART

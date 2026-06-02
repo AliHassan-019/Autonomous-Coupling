@@ -31,12 +31,12 @@ class StewartNode(Node):
 
         # Publisher pour les longueurs calculées à envoyer à l'Arduino
         self.publisher_ = self.create_publisher(
-            Float32MultiArray, "stewart/longueurs", 10
+            Float32MultiArray, "stewart/longueurs", 1
         )
 
         # Publisher pour le feedback reçu de l'Arduino
         self.publisher_feedback = self.create_publisher(
-            Float32MultiArray, "feedback_motors", 10
+            Float32MultiArray, "feedback_motors", 1
         )
 
         # Status messages for GUI monitoring
@@ -44,10 +44,10 @@ class StewartNode(Node):
 
         # Subscribers
         self.pos_sub = self.create_subscription(
-            Float32MultiArray, "manual_position", self.pos_callback, 10
+            Float32MultiArray, "manual_position", self.pos_callback, 1
         )
         self.ori_sub = self.create_subscription(
-            Float32MultiArray, "manual_orientation", self.ori_callback, 10
+            Float32MultiArray, "manual_orientation", self.ori_callback, 1
         )
 
         # Configuration UART vers Arduino

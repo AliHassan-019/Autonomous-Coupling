@@ -117,7 +117,7 @@ class IMUPublisher(Node):
         cfg = get_config()
         imu_cfg = cfg["imu"]
 
-        self.pub_imu = self.create_publisher(Float32MultiArray, "imu_error", 10)
+        self.pub_imu = self.create_publisher(Float32MultiArray, "imu_error", 1)
 
         bus = smbus.SMBus(imu_cfg["i2c_bus"])
         self.imu = MPU9250.MPU9250(bus, imu_cfg["imu_address"])

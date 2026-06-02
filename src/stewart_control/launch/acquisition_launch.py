@@ -17,6 +17,8 @@ def generate_launch_description():
         executable="aruco_node",
         name="aruco_node",
         output="screen",
+        respawn=True,
+        respawn_delay=1.0,
     )
 
     fusion_node = Node(
