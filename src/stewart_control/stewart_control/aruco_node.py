@@ -107,71 +107,10 @@ def wrap_rpy_deg(values):
     return np.array([normalize_angle_deg(value) for value in values], dtype=float)
 
 
-def draw_alignment_overlay(frame, marker_corners=None):
-    """Draw a center reticle and optional marker-to-center guidance line."""
-    height, width = frame.shape[:2]
-    frame_center = np.array([width / 2.0, height / 2.0], dtype=np.float32)
-    center_px = (int(round(frame_center[0])), int(round(frame_center[1])))
-    guide_radius = max(12, int(min(width, height) * 0.04))
-    guide_color = (0, 200, 255)
-
-    cv2.circle(frame, center_px, guide_radius, guide_color, 2)
-    cv2.circle(frame, center_px, 4, guide_color, -1)
-    cv2.line(
-        frame,
-        (center_px[0] - 18, center_px[1]),
-        (center_px[0] + 18, center_px[1]),
-        guide_color,
-        1,
-    )
-    cv2.line(
-        frame,
-        (center_px[0], center_px[1] - 18),
-        (center_px[0], center_px[1] + 18),
-        guide_color,
-        1,
-    )
-
-    if marker_corners is None:
-        cv2.putText(
-            frame,
-            "",
-            (center_px[0] + 10, max(22, center_px[1] - 12)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.45,
-            guide_color,
-            1,
-        )
-        return
-
-    marker_points = np.asarray(marker_corners, dtype=np.float32).reshape(-1, 2)
-    marker_center = np.mean(marker_points, axis=0)
-    marker_px = (int(round(marker_center[0])), int(round(marker_center[1])))
-    delta_px = marker_center - frame_center
-    offset_px = float(np.linalg.norm(delta_px))
-    aligned = offset_px <= guide_radius
-    marker_color = (0, 255, 120) if aligned else (80, 80, 255)
-
-    cv2.circle(frame, marker_px, 5, marker_color, -1)
-    cv2.line(frame, center_px, marker_px, marker_color, 2)
-    cv2.putText(
-        frame,
-        f"dx={delta_px[0]:+.0f}px dy={delta_px[1]:+.0f}px",
-        (20, height - 40),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.6,
-        marker_color,
-        2,
-    )
-    cv2.putText(
-        frame,
-        "Aligned" if aligned else "Align to center",
-        (20, height - 15),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.6,
-        marker_color,
-        2,
-    )
+def draw_marker_boxes(frame, corners):
+    for marker_corners in corners:
+        points = np.asarray(marker_corners, dtype=np.int32).reshape(-1, 2)
+        cv2.polylines(frame, [points], isClosed=True, color=(0, 255, 0), thickness=2)
 
 
 class ArucoRelativePose(Node):
@@ -183,9 +122,9 @@ class ArucoRelativePose(Node):
 
         # ------ Publishers ------
         # Tes anciens noms:
-        self.pub_pos = self.create_publisher(Float32MultiArray, "aruco_position", 10)
-        self.pub_ori = self.create_publisher(Float32MultiArray, "aruco_orientation", 10)
-        self.pub_img = self.create_publisher(Image, "camera/image_raw", 10)
+        self.pub_pos = self.create_publisher(Float32MultiArray, "aruco_position", 1)
+        self.pub_ori = self.create_publisher(Float32MultiArray, "aruco_orientation", 1)
+        self.pub_img = self.create_publisher(Image, "camera/image_raw", 1)
 
         self.bridge = CvBridge()
 
@@ -471,38 +410,6 @@ class ArucoRelativePose(Node):
         ]
         self.pub_ori.publish(msg_ori)
 
-    def _draw_pose_text(self, frame, position, orientation_deg, label):
-        position = np.asarray(position, dtype=float)
-        orientation_deg = np.asarray(orientation_deg, dtype=float)
-        distance_cm = float(np.linalg.norm(position) * 100.0)
-        cv2.putText(
-            frame,
-            (
-                f"{label}: X={position[0] * 100.0:.1f} "
-                f"Y={position[1] * 100.0:.1f} "
-                f"Z={position[2] * 100.0:.1f} cm"
-            ),
-            (20, 40),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0, 255, 255),
-            2,
-        )
-        cv2.putText(
-            frame,
-            (
-                f"D={distance_cm:.1f} cm  "
-                f"R={normalize_angle_deg(orientation_deg[0]):.1f} "
-                f"P={normalize_angle_deg(orientation_deg[1]):.1f} "
-                f"Y={normalize_angle_deg(orientation_deg[2]):.1f}"
-            ),
-            (20, 70),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0, 255, 100),
-            2,
-        )
-
     def _publish_held_pose(self):
         if self.last_position is None or self.last_orientation is None:
             return False
@@ -516,7 +423,6 @@ class ArucoRelativePose(Node):
         ret, frame = self._read_camera_frame()
         if not ret:
             return
-        overlay_drawn = False
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         corners, ids, _ = aruco.detectMarkers(
@@ -526,9 +432,8 @@ class ArucoRelativePose(Node):
         camera_ready = False
 
         if ids is not None:
-
             ids_flat = ids.flatten()
-            aruco.drawDetectedMarkers(frame, corners, ids)
+            draw_marker_boxes(frame, corners)
 
             if self.single_marker_only and self.mobile_id in ids_flat:
                 idx = ids_flat.tolist().index(self.mobile_id)
@@ -562,16 +467,6 @@ class ArucoRelativePose(Node):
                     stabilized_orientation,
                 )
 
-                aruco.drawAxis(frame, self.mtx, self.dist, rvec_m, tvec_m, 0.05)
-                draw_alignment_overlay(frame, self.last_marker_corners)
-                overlay_drawn = True
-                self._draw_pose_text(
-                    frame,
-                    stabilized_position,
-                    stabilized_orientation,
-                    "Marker",
-                )
-
                 img_msg = self.bridge.cv2_to_imgmsg(frame, encoding="bgr8")
                 self.pub_img.publish(img_msg)
                 return
@@ -590,8 +485,6 @@ class ArucoRelativePose(Node):
                 t_cam_world = -R_f.T @ tvec_f
 
                 camera_ready = True
-
-                aruco.drawAxis(frame, self.mtx, self.dist, rvec_f, tvec_f, 0.05)
 
             if self.mobile_id in ids_flat and camera_ready:
 
@@ -620,22 +513,9 @@ class ArucoRelativePose(Node):
                     stabilized_position,
                     stabilized_orientation,
                 )
-                draw_alignment_overlay(frame, self.last_marker_corners)
-                overlay_drawn = True
 
-                self._draw_pose_text(
-                    frame,
-                    stabilized_position,
-                    stabilized_orientation,
-                    "Mobile",
-                )
-
-        if not overlay_drawn and self._publish_held_pose():
-            draw_alignment_overlay(frame, self.last_marker_corners)
-            overlay_drawn = self.last_marker_corners is not None
-
-        if not overlay_drawn:
-            draw_alignment_overlay(frame)
+        if ids is None:
+            self._publish_held_pose()
 
         img_msg = self.bridge.cv2_to_imgmsg(frame, encoding="bgr8")
         self.pub_img.publish(img_msg)

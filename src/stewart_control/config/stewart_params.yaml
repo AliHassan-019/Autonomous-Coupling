@@ -18,7 +18,7 @@ serial:
 
 # Actuator control
 actuators:
-  length_threshold: 0.2
+  length_threshold: 0.08
   max_displacement: 10.0
   feedback_timer_period: 0.02
   home_vector: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
@@ -30,13 +30,11 @@ actuators:
 # Camera and ArUco
 aruco:
   camera_index: 0
-  camera_device: "/dev/video0"
   camera_backend: "v4l2"
   camera_width: 640
   camera_height: 480
-  camera_fourcc: "MJPG"
-  camera_auto_exposure: null
-  camera_exposure: null
+  camera_auto_exposure: "off"
+  camera_exposure: -7.0
   camera_gain: 0.0
   camera_brightness: null
   camera_contrast: null
@@ -46,12 +44,6 @@ aruco:
   camera_wb_temperature: null
   camera_autofocus: null
   camera_focus: null
-  camera_v4l2_auto_exposure: 1
-  camera_v4l2_exposure_dynamic_framerate: 0
-  camera_v4l2_exposure_time_absolute: 157
-  camera_v4l2_gain: 0
-  camera_v4l2_auto_wb: 1
-  camera_v4l2_wb_temperature: null
   camera_reopen_failures: 3
   camera_watchdog_timeout_s: 6.0
   dictionary: "DICT_4X4_1000"
@@ -105,11 +97,11 @@ automatic_control:
   use_marker_orientation: false  
   use_fused_pose: true            
   use_orientation_control: true  
-  command_debounce_s: 0.005
-  position_alpha: 0.2
-  orientation_alpha: 0.15
-  command_alpha: 0.55
-  position_deadband_m: 0.0015
-  orientation_deadband_deg: 0.5
-  command_deadband_cm: 0.15
+  command_debounce_s: 0.002
+  position_alpha: 0.65
+  orientation_alpha: 0.45
+  command_alpha: 0.85
+  position_deadband_m: 0.0005
+  orientation_deadband_deg: 0.2
+  command_deadband_cm: 0.05
   fusion_timeout_s: 0.2
