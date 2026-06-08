@@ -61,6 +61,8 @@ def apply_camera_settings(cap, camera_cfg):
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, float(camera_cfg["width"]))
     if "height" in camera_cfg:
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, float(camera_cfg["height"]))
+    if camera_cfg.get("fps") is not None:
+        cap.set(cv2.CAP_PROP_FPS, float(camera_cfg["fps"]))
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     auto_exposure = camera_cfg.get("auto_exposure")
     if auto_exposure in ("on", "off"):
@@ -134,6 +136,7 @@ class ArucoRelativePose(Node):
         camera_cfg = {
             "width": aruco_cfg.get("camera_width", 640),
             "height": aruco_cfg.get("camera_height", 480),
+            "fps": aruco_cfg.get("camera_fps"),
             "auto_exposure": aruco_cfg.get("camera_auto_exposure"),
             "exposure": aruco_cfg.get("camera_exposure"),
             "gain": aruco_cfg.get("camera_gain"),
@@ -152,6 +155,12 @@ class ArucoRelativePose(Node):
         self.camera_index = camera_index
         self.camera_backend = BACKEND_MAP.get(camera_backend, cv2.CAP_ANY)
         self.camera_cfg = camera_cfg
+        self.preview_width = int(aruco_cfg.get("preview_width", 0) or 0)
+        self.preview_height = int(aruco_cfg.get("preview_height", 0) or 0)
+        self.preview_publish_period = float(
+            aruco_cfg.get("preview_publish_period", 0.0) or 0.0
+        )
+        self.last_preview_publish_time = 0.0
         self.camera_reopen_failures = int(aruco_cfg.get("camera_reopen_failures", 3))
         self.camera_watchdog_timeout_s = float(
             aruco_cfg.get("camera_watchdog_timeout_s", 6.0)
@@ -410,6 +419,25 @@ class ArucoRelativePose(Node):
         ]
         self.pub_ori.publish(msg_ori)
 
+    def _publish_preview_image(self, frame):
+        now = time.monotonic()
+        if (
+            self.preview_publish_period > 0.0
+            and now - self.last_preview_publish_time < self.preview_publish_period
+        ):
+            return
+
+        preview = frame
+        if self.preview_width > 0 and self.preview_height > 0:
+            preview = cv2.resize(
+                frame,
+                (self.preview_width, self.preview_height),
+                interpolation=cv2.INTER_AREA,
+            )
+        img_msg = self.bridge.cv2_to_imgmsg(preview, encoding="bgr8")
+        self.pub_img.publish(img_msg)
+        self.last_preview_publish_time = now
+
     def _publish_held_pose(self):
         if self.last_position is None or self.last_orientation is None:
             return False
@@ -467,8 +495,7 @@ class ArucoRelativePose(Node):
                     stabilized_orientation,
                 )
 
-                img_msg = self.bridge.cv2_to_imgmsg(frame, encoding="bgr8")
-                self.pub_img.publish(img_msg)
+                self._publish_preview_image(frame)
                 return
 
             if self.fixed_id in ids_flat:
@@ -517,8 +544,7 @@ class ArucoRelativePose(Node):
         if ids is None:
             self._publish_held_pose()
 
-        img_msg = self.bridge.cv2_to_imgmsg(frame, encoding="bgr8")
-        self.pub_img.publish(img_msg)
+        self._publish_preview_image(frame)
 
     def destroy_node(self):
         if hasattr(self, "_watchdog_stop"):
