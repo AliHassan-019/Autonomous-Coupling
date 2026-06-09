@@ -36,7 +36,7 @@ aruco:
   camera_fps: 30
   preview_width: 320
   preview_height: 240
-  preview_publish_period: 0.08
+  preview_publish_period: 0.15
   camera_auto_exposure: "off"
   camera_exposure: -7.0
   camera_gain: 0.0
