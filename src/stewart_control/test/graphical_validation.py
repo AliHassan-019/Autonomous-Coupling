@@ -29,6 +29,8 @@ ORIENTATION_TARGET_COLUMNS = (
     ("target_pitch", "measured_pitch"),
     ("target_yaw", "measured_yaw"),
 )
+ORIENTATION_TABLE_ORDER = ["Camera-IMU", "Fusion-Camera", "Fusion-IMU"]
+ORIENTATION_TABLE_AXES = ("roll", "pitch", "yaw")
 
 
 def read_csv_rows(path: Path) -> list[dict[str, str]]:
@@ -151,6 +153,74 @@ def summarize_accuracy_csv(path: Path) -> dict[str, dict[str, float]]:
     }
 
 
+def canonical_comparison_name(value: str) -> str:
+    lowered = value.strip().lower().replace("_", "-").replace(" ", "-")
+    aliases = {
+        "camera-imu": "Camera-IMU",
+        "imu-camera": "Camera-IMU",
+        "fusion-camera": "Fusion-Camera",
+        "camera-fusion": "Fusion-Camera",
+        "fusion-imu": "Fusion-IMU",
+        "imu-fusion": "Fusion-IMU",
+    }
+    return aliases.get(lowered, value.strip())
+
+
+def summarize_orientation_difference_csv(
+    path: Path,
+) -> dict[str, dict[str, float]] | None:
+    values_by_metric: dict[str, dict[str, list[float]]] = defaultdict(
+        lambda: {axis: [] for axis in ORIENTATION_TABLE_AXES}
+    )
+
+    for row in read_csv_rows(path):
+        comparison = None
+        for key in ("comparison", "metric", "name", "sensor_pair", "pair", "label"):
+            value = row.get(key)
+            if value is not None and value.strip():
+                comparison = canonical_comparison_name(value)
+                break
+        if comparison is None:
+            continue
+
+        axis_found = False
+        for axis in ORIENTATION_TABLE_AXES:
+            candidates = (
+                axis,
+                f"{axis}_deg",
+                f"{axis}_error",
+                f"{axis}_error_deg",
+                f"mean_{axis}",
+                f"mean_{axis}_deg",
+            )
+            for key in candidates:
+                parsed = parse_float(row.get(key))
+                if parsed is not None:
+                    values_by_metric[comparison][axis].append(parsed)
+                    axis_found = True
+                    break
+        if axis_found:
+            continue
+
+        axis_label = row.get("axis", "").strip().lower()
+        value = parse_float(row.get("error_deg"))
+        if axis_label in ORIENTATION_TABLE_AXES and value is not None:
+            values_by_metric[comparison][axis_label].append(value)
+
+    if not values_by_metric:
+        return None
+
+    summary: dict[str, dict[str, float]] = {}
+    for comparison, axis_values in values_by_metric.items():
+        if not any(axis_values.values()):
+            continue
+        summary[comparison] = {
+            axis: mean(values) if values else float("nan")
+            for axis, values in axis_values.items()
+        }
+    return summary or None
+
+
 def improvement_percent(before: float, now: float) -> float:
     if not math.isfinite(before) or not math.isfinite(now) or abs(before) < 1e-12:
         return float("nan")
@@ -249,6 +319,88 @@ def plot_comparison(
     plt.close(fig)
 
 
+def plot_orientation_difference_bars(
+    before: dict[str, dict[str, float]],
+    now: dict[str, dict[str, float]],
+    output_path: Path,
+) -> None:
+    axes_order = [("roll", "Roll"), ("pitch", "Pitch"), ("yaw", "Yaw")]
+    comparison = "Fusion-IMU" if "Fusion-IMU" in before or "Fusion-IMU" in now else None
+    if comparison is None:
+        comparison = common_order(before, now, ORIENTATION_TABLE_ORDER)[0]
+
+    labels = [axis_label for _, axis_label in axes_order]
+    before_values = [
+        abs(before.get(comparison, {}).get(axis_key, float("nan")))
+        for axis_key, _ in axes_order
+    ]
+    now_values = [
+        abs(now.get(comparison, {}).get(axis_key, float("nan")))
+        for axis_key, _ in axes_order
+    ]
+    x_values = list(range(len(labels)))
+    width = 0.36
+    before_color = "#4c78a8"
+    now_color = "#e45756"
+
+    plt.style.use("seaborn-v0_8-whitegrid")
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.set_title("Accuracy Error Comparison", fontweight="bold")
+
+    finite_values = [
+        value for value in before_values + now_values if math.isfinite(value)
+    ]
+    max_value = max(finite_values, default=1.0)
+    label_offset = max(max_value * 0.015, 0.05)
+
+    ax.bar(
+        [x - width / 2 for x in x_values],
+        before_values,
+        width,
+        label="Before",
+        color=before_color,
+    )
+    ax.bar(
+        [x + width / 2 for x in x_values],
+        now_values,
+        width,
+        label="After",
+        color=now_color,
+    )
+
+    for x, value in zip([x - width / 2 for x in x_values], before_values):
+        if math.isfinite(value):
+            ax.text(
+                x,
+                value + label_offset,
+                f"{value:.2f}",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )
+
+    for x, value in zip([x + width / 2 for x in x_values], now_values):
+        if math.isfinite(value):
+            ax.text(
+                x,
+                value + label_offset,
+                f"{value:.2f}",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )
+
+    ax.set_ylabel("Absolute error (deg)")
+    ax.set_xticks(x_values)
+    ax.set_xticklabels(labels)
+    ax.legend(loc="upper right")
+    ax.set_ylim(0, max_value + label_offset * 8)
+    fig.tight_layout()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=180)
+    plt.close(fig)
+
+
 def print_summary(title: str, before: dict, now: dict, order: list[str]) -> None:
     print()
     print(title)
@@ -262,6 +414,29 @@ def print_summary(title: str, before: dict, now: dict, order: list[str]) -> None
             f"{label:<28} before={before_mean:9.3f}  "
             f"now={now_mean:9.3f}  improvement={change:7.2f}%"
         )
+
+
+def print_orientation_summary(
+    title: str,
+    before: dict[str, dict[str, float]],
+    now: dict[str, dict[str, float]],
+    order: list[str],
+) -> None:
+    print()
+    print(title)
+    print("-" * len(title))
+    comparison = "Fusion-IMU" if "Fusion-IMU" in before or "Fusion-IMU" in now else order[0]
+    before_row = before.get(comparison, {})
+    now_row = now.get(comparison, {})
+    before_text = "  ".join(
+        f"{axis}={abs(before_row.get(axis, float('nan'))):8.2f}"
+        for axis in ORIENTATION_TABLE_AXES
+    )
+    now_text = "  ".join(
+        f"{axis}={abs(now_row.get(axis, float('nan'))):8.2f}"
+        for axis in ORIENTATION_TABLE_AXES
+    )
+    print(f"{comparison:<16} before[{before_text}]  after[{now_text}]")
 
 
 def parse_args() -> argparse.Namespace:
@@ -298,21 +473,21 @@ def parse_args() -> argparse.Namespace:
 
 def demo_data():
     before_accuracy = {
-        "Fused Roll": {"mean": 1.13},
-        "Fused Pitch": {"mean": 1.43},
-        "Fused Yaw": {"mean": 26.61},
+        "Camera-IMU": {"roll": 6.10, "pitch": 0.25, "yaw": 169.38},
+        "Fusion-Camera": {"roll": -4.97, "pitch": -0.37, "yaw": -142.77},
+        "Fusion-IMU": {"roll": 1.71, "pitch": 0.89, "yaw": 26.61},
     }
     now_accuracy = {
-        "Fused Roll": {"mean": 0.10},
-        "Fused Pitch": {"mean": 0.12},
-        "Fused Yaw": {"mean": 15.47},
+        "Camera-IMU": {"roll": -3.74, "pitch": -1.67, "yaw": -18.79},
+        "Fusion-Camera": {"roll": 2.03, "pitch": 0.78, "yaw": 9.16},
+        "Fusion-IMU": {"roll": 1.13, "pitch": 0.12, "yaw": -9.63},
     }
     before_time = {
         "aruco_to_fusion_pose": {"mean": 95.0},
         "fusion_pose_to_command": {"mean": 42.0},
         "aruco_to_command": {"mean": 135.0},
         "command_to_feedback": {"mean": 165.0},
-        "aruco_to_feedback": {"mean": 295.0},
+        "aruco_to_feedback": {"mean": 295.0}, 
     }
     now_time = {
         "aruco_to_fusion_pose": {"mean": 58.0},
@@ -343,24 +518,42 @@ def main() -> int:
 
         before_time = summarize_time_csv(args.before_time)
         now_time = summarize_time_csv(args.now_time)
-        before_accuracy = summarize_accuracy_csv(args.before_accuracy)
-        now_accuracy = summarize_accuracy_csv(args.now_accuracy)
+        before_accuracy = summarize_orientation_difference_csv(
+            args.before_accuracy
+        ) or summarize_accuracy_csv(args.before_accuracy)
+        now_accuracy = summarize_orientation_difference_csv(
+            args.now_accuracy
+        ) or summarize_accuracy_csv(args.now_accuracy)
 
     latency_order = list(LATENCY_LABELS)
+    orientation_bar_mode = all(
+        isinstance(row, dict) and any(axis in row for axis in ORIENTATION_TABLE_AXES)
+        for row in list(before_accuracy.values()) + list(now_accuracy.values())
+    )
     accuracy_order = common_order(before_accuracy, now_accuracy)
 
     accuracy_output = args.output_dir / "accuracy_comparison.png"
     response_output = args.output_dir / "response_time_comparison.png"
 
-    plot_comparison(
-        before_accuracy,
-        now_accuracy,
-        accuracy_output,
-        "Accuracy Comparison: Before vs Now",
-        f"Mean absolute {args.accuracy_unit}",
-        preferred_order=accuracy_order,
-        annotation_mode="value",
-    )
+    if orientation_bar_mode:
+        plot_orientation_difference_bars(before_accuracy, now_accuracy, accuracy_output)
+        print_orientation_summary(
+            "Accuracy",
+            before_accuracy,
+            now_accuracy,
+            common_order(before_accuracy, now_accuracy, ORIENTATION_TABLE_ORDER),
+        )
+    else:
+        plot_comparison(
+            before_accuracy,
+            now_accuracy,
+            accuracy_output,
+            "Accuracy Comparison: Before vs Now",
+            f"Mean absolute {args.accuracy_unit}",
+            preferred_order=accuracy_order,
+            annotation_mode="value",
+        )
+        print_summary("Accuracy", before_accuracy, now_accuracy, accuracy_order)
     plot_comparison(
         before_time,
         now_time,
@@ -369,8 +562,6 @@ def main() -> int:
         "Mean latency (ms)",
         preferred_order=latency_order,
     )
-
-    print_summary("Accuracy", before_accuracy, now_accuracy, accuracy_order)
     print_summary(
         "Response Time",
         before_time,
