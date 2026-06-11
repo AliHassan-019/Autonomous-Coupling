@@ -67,12 +67,11 @@ aruco:
   position_deadband_m: 0.0015
   orientation_deadband_deg: 0.35
   hold_last_frames: 0
-
 # IMU
 imu:
   i2c_bus: 1
   imu_address: 0x68
-  calibration_path: "calib1.json"
+  calibration_path: "calib2.json"
   orientation_axis_order: [0, 1, 2]
   orientation_axis_sign: [1, 1, 1]
   reference_orientation_deg: [-2.22, -2.75, -35.56]  # Default pose zero reference

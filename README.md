@@ -1,67 +1,49 @@
 # Stewart Control
 
-[![CI - Stewart Control](https://github.com/jbernardo6u/stewart-control_ws/actions/workflows/ci.yml/badge.svg)](https://github.com/jbernardo6u/stewart-control_ws/actions/workflows/ci.yml)
+ROS 2 workspace for a six-actuator Stewart platform with ArUco vision tracking,
+MPU-9250 inertial sensing, gyro-assisted sensor fusion, calibrated actuator
+stroke mapping, Arduino Mega motor control, and a PySide6 operator interface.
 
-ROS 2 control workspace for a Stewart platform with ArUco vision tracking, MPU-9250 IMU orientation sensing, Kalman-based sensor fusion, calibrated actuator stroke mapping, Arduino Mega motor control, and a PySide6 monitoring/control interface.
+The system is built for a Raspberry Pi or Linux host connected to an Arduino
+Mega. ROS nodes handle perception, fusion, runtime state, inverse kinematics,
+operator UI, and command generation. The Arduino handles low-level encoder
+feedback and motor PWM output.
 
-The project is designed for a Raspberry Pi + Arduino hardware stack where ROS nodes handle perception, fusion, safety, and command generation while the Arduino runs the low-level encoder/PID loop.
+## Project Objectives
 
-## Contents
+- Automatically align and position a Stewart platform for precise physical
+  coupling or docking tasks.
+- Track the platform in real time using both camera vision and inertial sensing,
+  so the system can understand how the platform is moving in the real world.
+- Keep the platform stable when the target is steady, while still responding
+  quickly when real motion occurs.
+- Let an operator switch between monitoring, automatic movement, manual control,
+  and homing from one interface.
+- Show the live camera feed, sensor readings, motor commands, and motor feedback
+  clearly enough for testing, tuning, and operation.
+- Protect the mechanism by respecting actuator travel limits and requiring a
+  trusted home position before motion after an unsafe shutdown.
+- Provide calibration and validation tools so camera, IMU, and actuator behavior
+  can be checked before real platform operation.
 
-- [System Overview](#system-overview)
-- [Repository Layout](#repository-layout)
-- [Hardware Stack](#hardware-stack)
-- [Runtime Architecture](#runtime-architecture)
-- [ROS Topics](#ros-topics)
-- [Runtime Modes](#runtime-modes)
-- [Configuration](#configuration)
-- [Safety Model](#safety-model)
-- [Arduino Protocol](#arduino-protocol)
-- [Installation](#installation)
-- [Build](#build)
-- [Run](#run)
-- [GUI Operation](#gui-operation)
-- [Calibration and Validation](#calibration-and-validation)
-- [Performance Monitoring](#performance-monitoring)
-- [Tuning Guide](#tuning-guide)
-- [Development Workflow](#development-workflow)
-- [Troubleshooting](#troubleshooting)
+## Current Capabilities
 
-## System Overview
-
-The system closes the loop from vision and inertial sensing to calibrated six-actuator motion commands.
-
-```mermaid
-flowchart LR
-    CAM["USB Camera"] --> ARUCO["aruco_node"]
-    IMU["MPU-9250 IMU"] --> IMUN["imu_node"]
-
-    ARUCO -->|aruco_position| FUSION["fusion_node"]
-    ARUCO -->|aruco_orientation| FUSION
-    IMUN -->|imu_error| FUSION
-
-    FUSION -->|F_pose| AUTO["stewart_node"]
-    FUSION -->|F_orientation| AUTO
-    ARUCO -->|fallback pose| AUTO
-
-    AUTO -->|CSV over USB serial| ARD["Arduino Mega"]
-    ARD -->|encoder feedback CSV| AUTO
-    AUTO -->|feedback_motors| GUI["interface_node"]
-    AUTO -->|stewart/longueurs| GUI
-
-    ARUCO -->|camera/image_raw preview| GUI
-    IMUN --> GUI
-    FUSION --> GUI
-```
-
-Core behavior:
-
-- Camera detects the moving ArUco marker and publishes corrected position/orientation.
-- IMU publishes corrected roll/pitch/yaw.
-- Fusion combines IMU and fresh camera orientation and publishes fused pose.
-- Automatic controller computes Stewart inverse kinematics and sends six actuator targets to Arduino.
-- Arduino runs encoder/PID control and streams motor feedback.
-- GUI displays camera, pose, fusion, motor commands, feedback, and plots.
+- Single USB camera ArUco tracking with configurable marker IDs, camera
+  controls, pose smoothing, pose deadbands, and watchdog recovery.
+- Single MPU-9250 IMU orientation publishing with axis remap, reference offset,
+  calibration JSON loading, and gyro-rate publishing.
+- Fusion node with angle-rate Kalman filtering, separate IMU/camera/gyro trust
+  values, camera outlier rejection, and fused pose publishing.
+- Automatic Stewart controller using fused pose when available, camera fallback
+  when required, IK-based actuator targets, command smoothing, command
+  deadbands, and per-motor soft-limit mapping.
+- Manual Stewart controller receiving GUI translation/orientation targets.
+- Runtime-state safety file that blocks motion after unclean shutdowns until
+  home is confirmed.
+- PySide6 dashboard with live camera preview, status LEDs, sensor values, motor
+  commands, feedback, plots, runtime controls, and homing/calibration access.
+- Arduino firmware with encoder-based position feedback, stop/restart
+  hysteresis, PWM ramping, and CSV serial protocol.
 
 ## Repository Layout
 
@@ -82,21 +64,8 @@ Autonomous-Coupling/
 |   |-- config/
 |   |   `-- stewart_params.yaml
 |   |-- docs/
-|   |   |-- ARCHITECTURE.md
-|   |   |-- USER_MANUAL.md
-|   |   `-- Manual Mode Architecture.md
 |   |-- launch/
-|   |   |-- acquisition_launch.py
-|   |   |-- launch_posHome.py
-|   |   |-- manual_launch.py
-|   |   |-- stewart.launch.py
-|   |   `-- stewart_ordered_launch.py
 |   |-- share/stewart_control/
-|   |   |-- calib_int.npz
-|   |   |-- calib_ext3.npz
-|   |   |-- calib1.json
-|   |   |-- calib2.json
-|   |   `-- calib_int_meta.json
 |   |-- stewart_control/
 |   |   |-- actuator_calibration.py
 |   |   |-- aruco_node.py
@@ -112,111 +81,77 @@ Autonomous-Coupling/
 |   |   |-- runtime_state.py
 |   |   `-- stewart_node.py
 |   |-- test/
-|   |   |-- diagnose_camera_failure.py
-|   |   |-- graphical_validation.py
-|   |   |-- orientation_accuracy.py
-|   |   |-- test_camera_feed.py
-|   |   |-- test_realtime_dual_aruco.py
-|   |   |-- test_single_marker_fixed_camera.py
-|   |   `-- visual_response_time.py
 |   `-- validation/
-|       `-- validate_camera_calibration.py
 |-- build/      # generated by colcon
 |-- install/    # generated by colcon
 `-- log/        # generated by colcon
 ```
 
-Generated directories are ignored by Git and should not be edited as source of truth:
+Generated `build/`, `install/`, and `log/` directories are not source of truth.
+Edit files under `src/stewart_control`.
 
-- `build/`
-- `install/`
-- `log/`
+## Hardware Assumptions
 
-## Hardware Stack
-
-| Component | Purpose | Current project assumptions |
+| Component | Purpose | Current assumption |
 |---|---|---|
-| Raspberry Pi / Linux host | Runs ROS 2, OpenCV, GUI, sensor fusion | ROS 2 Jazzy, Python 3.12 |
-| USB camera | ArUco marker detection | OpenCV `v4l2`, 640x480, 30 FPS requested |
-| MPU-9250 IMU | Orientation sensing | I2C bus `1`, address `0x68` |
-| Arduino Mega 2560 | Low-level motor controller | USB serial `/dev/ttyACM0`, 115200 baud |
+| Linux host / Raspberry Pi | Runs ROS 2, OpenCV, GUI, fusion, control | ROS 2 Jazzy, Python 3.12 |
+| USB camera | ArUco marker tracking and GUI preview | V4L2, 640x480, 30 FPS requested |
+| MPU-9250 IMU | Orientation and gyro-rate measurement | I2C bus `1`, address `0x68` |
+| Arduino Mega 2560 | Low-level motor/encoder controller | `/dev/ttyACM0`, 115200 baud |
 | Six actuators + encoders | Stewart platform motion | 960 ticks/rev, 2 cm pulley diameter |
-| Touch/display GUI | Operator control and monitoring | PySide6 + matplotlib |
+| Operator display | GUI control and monitoring | PySide6 + matplotlib |
 
-## Runtime Architecture
+## System Architecture
 
 ```mermaid
-flowchart TB
-    subgraph Sensors
-        A["aruco_node<br/>camera + ArUco pose"]
-        I["imu_node<br/>MPU-9250 RPY"]
-    end
+flowchart LR
+    CAM["USB Camera"] --> ARUCO["aruco_node"]
+    IMU["MPU-9250 IMU"] --> IMUN["imu_node"]
 
-    subgraph Fusion
-        F["fusion_node<br/>Kalman1D roll/pitch/yaw"]
-    end
+    ARUCO -->|aruco_position| FUSION["fusion_node"]
+    ARUCO -->|aruco_orientation| FUSION
+    IMUN -->|imu_error| FUSION
+    IMUN -->|imu_gyro| FUSION
 
-    subgraph Control
-        S["stewart_node<br/>automatic IK + serial"]
-        M["manual_stewart_node<br/>manual IK + serial"]
-        H["posHome_node<br/>homing/recovery"]
-    end
+    FUSION -->|F_orientation| AUTO["stewart_node"]
+    FUSION -->|F_pose| AUTO
+    ARUCO -->|fallback pose| AUTO
 
-    subgraph Interface
-        G["interface_node<br/>PySide6 dashboard"]
-        T["motor_test_interface<br/>homing calibration tool"]
-    end
+    AUTO -->|CSV targets| ARD["Arduino Mega"]
+    ARD -->|CSV feedback| AUTO
+    AUTO -->|stewart/longueurs| GUI["interface_node"]
+    AUTO -->|feedback_motors| GUI
 
-    subgraph Shared
-        C["stewart_params.yaml"]
-        R["runtime_state.py"]
-        K["inv_kinematics.py"]
-        AC["actuator_calibration.py"]
-    end
-
-    A --> F
-    I --> F
-    F --> S
-    A --> S
-    G --> M
-    S --> G
-    M --> G
-    H --> G
-    T --> C
-    R --> S
-    R --> M
-    R --> H
-    K --> S
-    K --> M
-    AC --> S
-    AC --> M
-    AC --> H
+    ARUCO -->|camera/image_raw| GUI
+    IMUN --> GUI
+    FUSION --> GUI
 ```
 
-### Node Responsibilities
+## Node Responsibilities
 
-| Node | File | Role |
+| Node | File | Responsibility |
 |---|---|---|
-| `imu_node` | `imu_node.py` | Reads MPU-9250, computes roll/pitch/yaw, applies reference and axis remap, publishes `imu_error`. |
-| `aruco_node` | `aruco_node.py` | Captures camera frames, detects ArUco marker pose, applies reference/remap, smooths/deadbands, publishes pose and preview image. |
-| `fusion_node` | `fusion_node.py` | Combines IMU and camera orientation with 1D Kalman filters and publishes fused orientation/pose. |
-| `stewart_node` | `stewart_node.py` | Automatic control: consumes fused/camera pose, computes IK, maps actuator targets, sends serial commands, reads feedback. |
-| `manual_stewart_node` | `manual_stewart_node.py` | Manual control: consumes GUI manual targets, computes IK, sends serial commands, reads feedback. |
-| `posHome_node` | `posHome_node.py` | Sends home command until feedback confirms the platform is parked. |
-| `interface_node` | `interface_node.py` | PySide6 dashboard; starts/stops runtime modes, publishes manual commands, displays sensor/motor data. |
-| `motor_test_interface` | `motor_test_interface.py` | Manual actuator homing and calibration UI; writes actuator limits to YAML. |
+| `aruco_node` | `aruco_node.py` | Opens camera, detects ArUco marker pose, applies camera reference/remap, stabilizes pose, publishes pose and preview image. |
+| `imu_node` | `imu_node.py` | Reads MPU-9250, computes corrected RPY, applies reference/remap, publishes orientation and gyro rate. |
+| `fusion_node` | `fusion_node.py` | Fuses IMU angle, gyro rate, and camera angle with an angle-rate Kalman filter and camera outlier rejection. |
+| `stewart_node` | `stewart_node.py` | Automatic control: selects fused/camera pose, filters control pose, computes IK, maps calibrated strokes, sends Arduino targets, reads feedback. |
+| `manual_stewart_node` | `manual_stewart_node.py` | Manual control: consumes GUI targets, computes IK, sends Arduino targets, reads feedback. |
+| `posHome_node` | `posHome_node.py` | Sends home targets until feedback confirms a stable home position. |
+| `interface_node` | `interface_node.py` | PySide6 GUI, mode/process control, camera preview, telemetry, manual target publishing, motor plots. |
+| `motor_test_interface` | `motor_test_interface.py` | Manual actuator homing/calibration tool that writes actuator limits to YAML. |
 
 ## ROS Topics
 
-| Topic | Type | Publisher | Subscriber(s) | Meaning |
+| Topic | Type | Publisher | Subscribers | Meaning |
 |---|---|---|---|---|
-| `/aruco_position` | `std_msgs/Float32MultiArray` | `aruco_node` | `fusion_node`, `stewart_node`, `interface_node` | Marker position `[x, y, z]` in meters after reference correction. |
+| `/aruco_position` | `std_msgs/Float32MultiArray` | `aruco_node` | `fusion_node`, `stewart_node`, `interface_node` | Marker position `[x, y, z]` in meters after camera reference correction. |
 | `/aruco_orientation` | `std_msgs/Float32MultiArray` | `aruco_node` | `fusion_node`, `stewart_node`, `interface_node` | Marker orientation `[roll, pitch, yaw]` in degrees. |
-| `/camera/image_raw` | `sensor_msgs/Image` | `aruco_node` | `interface_node` | Preview frame for GUI only. Not used for fusion directly. |
-| `/imu_error` | `std_msgs/Float32MultiArray` | `imu_node` | `fusion_node`, `interface_node` | Corrected IMU `[roll, pitch, yaw]` in degrees. |
-| `/F_orientation` | `std_msgs/Float32MultiArray` | `fusion_node` | `stewart_node`, `interface_node` | Fused orientation `[roll, pitch, yaw]`. |
-| `/F_position` | `std_msgs/Float32MultiArray` | `fusion_node` | optional monitoring | Fresh camera position forwarded by fusion. |
-| `/F_pose` | `std_msgs/Float32MultiArray` | `fusion_node` | `stewart_node`, monitoring | `[x, y, z, roll, pitch, yaw]`. |
+| `/camera/image_raw` | `sensor_msgs/Image` | `aruco_node` | `interface_node` | GUI preview image. Not used directly for fusion. |
+| `/imu_error` | `std_msgs/Float32MultiArray` | `imu_node` | `fusion_node`, `interface_node` | Corrected IMU orientation `[roll, pitch, yaw]` in degrees. |
+| `/imu_gyro` | `std_msgs/Float32MultiArray` | `imu_node` | `fusion_node`, monitoring | Gyro angular rate `[roll_rate, pitch_rate, yaw_rate]` in deg/s by default. |
+| `/F_orientation` | `std_msgs/Float32MultiArray` | `fusion_node` | `stewart_node`, `interface_node` | Fused orientation `[roll, pitch, yaw]` in degrees. |
+| `/F_position` | `std_msgs/Float32MultiArray` | `fusion_node` | monitoring | Fresh camera position forwarded by fusion. |
+| `/F_pose` | `std_msgs/Float32MultiArray` | `fusion_node` | `stewart_node`, monitoring | `[x, y, z, roll, pitch, yaw]`. Published only while camera pose is fresh. |
 | `/stewart/longueurs` | `std_msgs/Float32MultiArray` | `stewart_node`, `manual_stewart_node` | `interface_node` | Six actuator command targets in centimeters. |
 | `/feedback_motors` | `std_msgs/Float32MultiArray` | `stewart_node`, `manual_stewart_node`, `posHome_node` | `interface_node`, monitoring | Six measured actuator positions in centimeters. |
 | `/stewart_status` | `std_msgs/String` | `stewart_node`, `manual_stewart_node` | `interface_node` | Operator status and limit messages. |
@@ -225,77 +160,90 @@ flowchart TB
 
 ## Runtime Modes
 
-```mermaid
-stateDiagram-v2
-    [*] --> RecoveryCheck
-    RecoveryCheck --> Homing: runtime state requires recovery
-    RecoveryCheck --> Ready: trusted home state
-    Homing --> Ready: feedback confirms home
-    Ready --> Acquisition: GUI "Acquisition"
-    Ready --> Automatic: GUI "Automatique"
-    Ready --> Manual: GUI "Manuel"
-    Ready --> InitialPosition: GUI "Etat initial"
-    Automatic --> Ready: stop
-    Manual --> Ready: stop
-    Acquisition --> Ready: stop
-    InitialPosition --> Ready: home command complete/stop
-```
-
-| Mode | GUI action | Launch file | Nodes |
+| Mode | GUI button | Launch file / action | Notes |
 |---|---|---|---|
-| Acquisition | `Acquisition` | `acquisition_launch.py` | `imu_node`, `aruco_node`, `fusion_node` |
-| Automatic | `Automatique` | `stewart.launch.py` plus sensor stack if needed | `stewart_node` |
-| Manual | `Manuel` | `manual_launch.py` | `manual_stewart_node` |
-| Initial position | `Etat initial` | `manual_launch.py` then sends zero target | `manual_stewart_node` |
-| Recovery / homing | `Recovery / Homing` | GUI tool or `launch_posHome.py` | `motor_test_interface` or `posHome_node` |
+| Acquisition | `Acquisition` | `acquisition_launch.py` | Starts IMU, ArUco, and fusion only. Used for tracking/preview without platform motion. |
+| Automatic | `Automatique` | `stewart.launch.py` plus sensor stack if needed | Starts automatic IK/serial control. Motion is blocked if recovery is required. |
+| Manual | `Manuel` | `manual_launch.py` | Enables GUI manual pose commands. |
+| Initial position | `Etat initial` | `manual_launch.py` then zero command | Sends a zero pose target through manual control. |
+| Recovery / Homing | `Recovery / Homing` | `motor_test_interface` or `launch_posHome.py` | Confirms or recalibrates actuator home state. |
 
 ## Configuration
 
-Main file:
+Main configuration file:
 
 ```text
 src/stewart_control/config/stewart_params.yaml
 ```
 
-The loader searches in this order:
+`config_loader.py` resolves configuration in this order:
 
-1. `STEWART_CONFIG` environment variable
-2. Source package config: `src/stewart_control/config/stewart_params.yaml`
+1. `STEWART_CONFIG`
+2. Source package config
 3. Installed package share config
 
 Key sections:
 
 | Section | Purpose |
 |---|---|
-| `stewart_platform` | Base radius, platform radius, gamma angles, home position, nominal `L0`. |
+| `stewart_platform` | Platform geometry and nominal home length `L0`. |
 | `serial` | Arduino port, baudrate, timeout, startup delay. |
-| `actuators` | Logical stroke range, per-motor min/max calibration, feedback period. |
-| `aruco` | Camera settings, marker IDs, marker size, smoothing/deadbands, preview period. |
-| `imu` | I2C bus/address, calibration JSON, axis remap, reference orientation. |
-| `fusion` | Camera freshness timeout, orientation deadband, Kalman `q/r`. |
-| `automatic_control` | Automatic control behavior, pose source, smoothing, command deadbands. |
+| `actuators` | Logical stroke, calibrated per-motor min/max, feedback timer, command threshold. |
+| `aruco` | Camera settings, marker IDs, reference pose, pose smoothing, preview rate, watchdog timeout. |
+| `imu` | I2C address, calibration JSON, axis remap, reference orientation, gyro publishing. |
+| `fusion` | Gyro prediction, camera timeout, Kalman noise values, outlier thresholds, hold deadband. |
+| `automatic_control` | Fused-pose usage, smoothing, deadbands, command debounce, stop tolerance. |
 
-### Camera vs Preview Rate
+### Fusion Tuning Notes
 
-The camera preview rate and ArUco detection loop are intentionally separate:
+The fusion node uses an angle-rate Kalman filter per axis.
+
+| Parameter | Meaning |
+|---|---|
+| `process_angle_q` | Larger values allow angle estimate to move more freely. |
+| `process_rate_q` | Larger values allow faster response to real tilt changes. |
+| `gyro_r` | Lower values trust gyro rate more. |
+| `imu_r` | Lower values trust IMU angle more. |
+| `camera_r` | Lower values trust camera angle more. |
+| `outlier_threshold_deg` | Camera/angle jump threshold before rejection. |
+| `orientation_hold_deadband_deg` | Holds very small fused angle changes to avoid rest jitter. |
+
+Current design intent:
+
+- Roll/pitch respond relatively quickly.
+- Yaw is treated more conservatively because magnetometer yaw is easily affected
+  by motors, metal, wiring, and current.
+- Camera outliers are rejected before they can move the platform.
+- Gyro rate improves tilt response without replacing absolute angle correction.
+
+If the fused response is too slow, increase `process_rate_q` slightly for the
+affected axis. If it jitters at rest, increase that axis measurement noise or
+the hold/deadband values slightly.
+
+### Camera Preview and GUI Load
+
+Camera detection and GUI preview are intentionally separate:
 
 ```yaml
 aruco:
   loop_rate: 0.03
-  preview_publish_period: 0.15
+  preview_width: 320
+  preview_height: 240
+  preview_publish_period: 0.05
 ```
 
-- `loop_rate` controls how often `aruco_node` attempts detection and publishes pose.
+- `loop_rate` controls pose detection attempts.
 - `preview_publish_period` controls only GUI image publishing.
-- Slowing preview reduces GUI load without directly slowing fusion/control pose topics.
+- The GUI renders the newest camera frame at about 20 FPS and drops older
+  frames to avoid display lag.
+- Motor labels update at a moderate rate and six matplotlib plots are refreshed
+  less often so automatic mode does not block camera preview.
 
-## Safety Model
+## Runtime Safety Model
 
-Safety state is handled by `runtime_state.py`.
+Runtime state is handled by `runtime_state.py`.
 
-By default, motion is blocked unless the system trusts that the platform is referenced at home.
-
-Runtime state file:
+Default state file:
 
 ```text
 ~/.stewart_control/motor_runtime_state.json
@@ -307,26 +255,15 @@ Override directory:
 export STEWART_RUNTIME_DIR=/custom/runtime/path
 ```
 
-State behavior:
+Behavior:
 
-- Clean shutdown parks the platform at home and marks startup trusted.
-- Unexpected process death marks recovery required.
-- Automatic/manual nodes refuse motion if recovery is required.
-- Homing or manual recovery can mark the platform safe again.
+- Motion starts only if the previous session ended cleanly at home.
+- Unexpected process death or failed shutdown marks recovery required.
+- Automatic/manual nodes refuse motion while recovery is required.
+- Homing or manual recovery can mark home as confirmed.
+- Shutdown attempts to park the platform at home before marking the state clean.
 
-```mermaid
-flowchart LR
-    START["Node startup"] --> CHECK{"Trusted clean shutdown?"}
-    CHECK -->|yes| ENABLE["motion enabled"]
-    CHECK -->|no| BLOCK["motion blocked"]
-    BLOCK --> RECOVER["homing/manual recovery"]
-    RECOVER --> ENABLE
-    ENABLE --> SHUTDOWN["shutdown requested"]
-    SHUTDOWN --> HOME["send zero targets until feedback stable"]
-    HOME --> CLEAN["mark clean shutdown"]
-```
-
-## Arduino Protocol
+## Arduino Protocol and Motor Control
 
 Firmware:
 
@@ -340,77 +277,55 @@ Serial settings:
 /dev/ttyACM0 @ 115200 baud
 ```
 
-Command format from Raspberry Pi to Arduino:
+Command from Raspberry Pi to Arduino:
 
 ```text
 M1,M2,M3,M4,M5,M6\n
 ```
 
-Example:
-
-```text
-0.12,0.08,0.10,0.05,0.07,0.11
-```
-
-Feedback format from Arduino to Raspberry Pi:
+Feedback from Arduino to Raspberry Pi:
 
 ```text
 F1,F2,F3,F4,F5,F6\n
 ```
 
-The Arduino loop:
+The firmware currently:
 
-- Reads the latest six target positions in centimeters.
+- Reads six target positions in centimeters.
 - Converts encoder ticks to centimeters.
-- Runs one PID controller per actuator.
-- Stops each motor inside tolerance.
+- Applies stop/restart hysteresis near target.
+- Uses PWM ramping to reduce abrupt motor changes.
 - Streams six feedback positions roughly every 20 ms.
 
-Important constants in firmware:
-
-| Constant | Value | Meaning |
-|---|---:|---|
-| `ticksParTourSortie` | `960.0` | Encoder ticks per output revolution |
-| `diametrePoulieCm` | `2.0` | Pulley diameter |
-| `stopToleranceCm` | `0.10` | Motor stop tolerance |
-| `restartToleranceCm` | `0.25` | Restart threshold |
-| `Kp`, `Ki`, `Kd` | `45.0`, `0.02`, `1.5` | PID gains |
+Important note: the firmware creates PID controller objects and calls
+`Compute()`, but the current PWM output is still based on a custom
+error-to-PWM rule with ramping. Treat the current firmware as encoder feedback
+control with proportional-style PWM behavior. If true PID output is adopted
+later, it should be tested one actuator at a time before running all six under
+platform load.
 
 ## Installation
 
-### System Dependencies
-
-Install ROS 2 Jazzy and source it:
+Source ROS 2:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
 ```
 
-Install common Python/runtime dependencies:
+Install common Python dependencies:
 
 ```bash
 python3 -m pip install --user numpy pyyaml pyserial PySide6 matplotlib opencv-contrib-python
 ```
 
-Hardware-specific dependencies may also be required:
+Install hardware-specific dependencies as needed:
 
 ```bash
 python3 -m pip install --user smbus2 imusensor
-```
-
-Depending on your Raspberry Pi environment, `smbus` may come from apt:
-
-```bash
 sudo apt install python3-smbus i2c-tools
 ```
 
-Enable I2C if needed:
-
-```bash
-sudo raspi-config
-```
-
-Then check the IMU:
+Enable I2C on Raspberry Pi if required, then verify:
 
 ```bash
 i2cdetect -y 1
@@ -427,7 +342,8 @@ colcon build --symlink-install --packages-select stewart_control
 source install/setup.bash
 ```
 
-If you are working from the outer workspace that already has `src/stewart_control`, run the same commands from that workspace root.
+After source changes, rebuild and source again before running. The installed
+entry points under `install/` are what `ros2 run` and `ros2 launch` execute.
 
 ## Run
 
@@ -438,7 +354,7 @@ source install/setup.bash
 ros2 run stewart_control interface_node
 ```
 
-### Acquisition Stack
+### Acquisition
 
 ```bash
 source install/setup.bash
@@ -454,11 +370,7 @@ source install/setup.bash
 ros2 launch stewart_control stewart.launch.py
 ```
 
-For cleaner timing tests, reduce logs:
-
-```bash
-ros2 launch stewart_control stewart.launch.py --ros-args --log-level warn
-```
+The GUI can start the sensor stack automatically when entering automatic mode.
 
 ### Manual Control
 
@@ -467,63 +379,69 @@ source install/setup.bash
 ros2 launch stewart_control manual_launch.py
 ```
 
-### Homing Node
+### Homing
 
 ```bash
 source install/setup.bash
 ros2 launch stewart_control launch_posHome.py
 ```
 
-### Combined Runtime
+### Combined Launch
 
 ```bash
 source install/setup.bash
 ros2 launch stewart_control stewart_ordered_launch.py
 ```
 
-This launches IMU, ArUco, fusion, and automatic Stewart control together.
+## Verification Checklist
 
-## GUI Operation
+Before a real motion test, verify topic rates:
 
-The GUI is implemented in PySide6 and provides:
+```bash
+ros2 topic hz /camera/image_raw
+ros2 topic hz /aruco_position
+ros2 topic hz /imu_error
+ros2 topic hz /imu_gyro
+ros2 topic hz /F_orientation
+ros2 topic hz /F_pose
+ros2 topic hz /feedback_motors
+```
 
-- Sensor status cards for ArUco, IMU, and fusion.
-- Live camera preview.
-- Motor command and feedback display.
-- Six motor plots.
-- Manual position/orientation command input.
-- Buttons for acquisition, automatic mode, manual mode, initial position, stop, recovery, and homing.
+Expected rough targets:
 
-GUI mode buttons currently launch ROS processes using `subprocess.Popen`.
+| Topic | Healthy target |
+|---|---:|
+| `/camera/image_raw` | about 15-20 Hz preview |
+| `/aruco_position` | marker-dependent, ideally 15+ Hz |
+| `/imu_error` | about 20 Hz with current config |
+| `/imu_gyro` | about 20 Hz with current config |
+| `/F_orientation` | about IMU/fusion rate |
+| `/F_pose` | follows fresh camera pose availability |
+| `/feedback_motors` | about 40-50 Hz |
 
-Important behavior:
+During motor tests, compare:
 
-- Automatic/manual modes are disabled if runtime recovery is required.
-- Initial position starts manual control and sends a zero target.
-- Recovery/homing opens the motor test interface.
-- Stop sends `SIGINT` to launched process groups, then kills them if they do not exit.
+```text
+error_cm = command_cm - feedback_cm
+```
+
+Encoder feedback confirms motor/pulley rotation. Physical validation with a
+ruler or caliper is still required to confirm that encoder distance equals real
+actuator travel.
 
 ## Calibration and Validation
 
 ### IMU Calibration
 
-Interactive dual-IMU calibration:
-
 ```bash
 python3 src/stewart_control/calibration/calibrate_dual_imu.py
 ```
 
-It collects:
-
-- Stationary gyro bias
-- Six-face accelerometer means
-- Magnetometer rotation samples
-
-Outputs RTIMULib-style JSON files such as:
+Collects stationary gyro bias, six-face accelerometer data, and magnetometer
+samples. Calibration JSON files are stored under:
 
 ```text
-src/stewart_control/share/stewart_control/calib1.json
-src/stewart_control/share/stewart_control/calib2.json
+src/stewart_control/share/stewart_control/
 ```
 
 ### IMU Home Reference
@@ -532,7 +450,8 @@ src/stewart_control/share/stewart_control/calib2.json
 python3 src/stewart_control/test/test_imu_home_reference.py
 ```
 
-Use this to estimate `imu.reference_orientation_deg` while the platform is held at the desired home pose.
+Use this with the platform in home pose to estimate
+`imu.reference_orientation_deg`.
 
 ### Camera Intrinsic Calibration
 
@@ -540,7 +459,7 @@ Use this to estimate `imu.reference_orientation_deg` while the platform is held 
 python3 src/stewart_control/calibration/calibrate_camera_charuco.py
 ```
 
-The script uses ChArUco board samples and writes:
+Writes:
 
 ```text
 src/stewart_control/share/stewart_control/calib_int.npz
@@ -553,20 +472,16 @@ src/stewart_control/share/stewart_control/calib_int_meta.json
 python3 src/stewart_control/validation/validate_camera_calibration.py
 ```
 
-It reports reprojection error, coverage, pose stability, and a calibration rating.
-
-### Camera / ArUco Diagnostics
-
-Useful diagnostic scripts:
+### Camera Diagnostics
 
 ```bash
 python3 src/stewart_control/test/test_camera_feed.py
-python3 src/stewart_control/test/test_realtime_dual_aruco.py
 python3 src/stewart_control/test/test_single_marker_fixed_camera.py
+python3 src/stewart_control/test/test_realtime_dual_aruco.py
 python3 src/stewart_control/test/diagnose_camera_failure.py
 ```
 
-### Orientation and Response Validation
+### Orientation and Response Diagnostics
 
 ```bash
 python3 src/stewart_control/test/orientation_accuracy.py
@@ -574,17 +489,12 @@ python3 src/stewart_control/test/visual_response_time.py
 python3 src/stewart_control/test/graphical_validation.py
 ```
 
-These scripts are hardware/diagnostic tools, not conventional CI unit tests.
+These scripts are hardware diagnostics and validation tools, not conventional
+unit tests.
 
 ## Performance Monitoring
 
-Runtime monitor:
-
-```text
-scripts/performance_monitor.py
-```
-
-Run during a real test:
+Run:
 
 ```bash
 source install/setup.bash
@@ -598,192 +508,95 @@ performance_logs/performance_YYYYMMDD_HHMMSS.csv
 performance_logs/performance_YYYYMMDD_HHMMSS_summary.json
 ```
 
-Metrics include:
+The monitor tracks ROS topic rates, stale times, process CPU/memory, command to
+feedback latency, camera preview payloads, and `/imu_gyro`.
 
-- CPU and memory for relevant ROS/node processes
-- Topic rates
-- Topic stale times
-- Topic period average and p95
-- Camera preview payload size
-- Command-to-feedback timing
+## Tuning Guidance
 
-Healthy reference values from recent tests:
+### Sensor Stability
 
-| Metric | Good target |
-|---|---:|
-| IMU | ~20 Hz |
-| Feedback | 40-50 Hz |
-| Fusion orientation | 25-30+ Hz |
-| Fusion pose | close to ArUco/fresh camera availability |
-| ArUco pose | 8-10 Hz usable, 15+ Hz better |
-| Command-to-feedback p95 | under 50 ms |
-| Camera preview | can be slower; GUI only |
+- Keep camera exposure/focus stable.
+- Use strong lighting and a rigid marker mount.
+- Increase physical marker size when possible.
+- Keep the IMU away from motors, power wires, and ferromagnetic material.
+- Expect yaw to be less reliable than roll/pitch around motors.
 
-## Tuning Guide
+### Fusion
 
-### ArUco Tracking
+- Increase `process_rate_q` for faster real tilt response.
+- Increase `gyro_r` if gyro prediction makes the estimate too reactive.
+- Increase `imu_r` or `camera_r` if that sensor is noisy.
+- Increase `orientation_hold_deadband_deg` only enough to stop rest jitter.
 
-If tracking is not smooth:
+### Automatic Control
 
-1. Improve marker visibility and lighting.
-2. Increase physical marker size.
-3. Reduce camera resolution if CPU-bound.
-4. Keep `single_marker_only: true` when using one moving marker.
-5. Keep GUI preview slower than detection.
-6. Avoid debug logging during control.
+The controller sends a new command only when:
 
-Relevant YAML:
+- pose input is fresh enough,
+- IK output changes beyond `length_threshold`,
+- logical and physical actuator limits pass,
+- command difference exceeds `command_deadband_cm`,
+- platform is outside `stop_tolerance_cm`.
+
+Avoid adding heavy restrictions before measuring topic rates, CPU load, and
+command-to-feedback timing.
+
+### GUI Smoothness
+
+The GUI is optimized to keep camera preview smooth during automatic mode:
+
+- image callbacks store only the latest frame,
+- camera render runs on a timer,
+- motor data callbacks store latest values,
+- motor labels and plots are refreshed on timers.
+
+If CPU is still high, reduce preview rate before reducing tracking rate:
 
 ```yaml
 aruco:
-  camera_width: 640
-  camera_height: 480
-  preview_publish_period: 0.15
-  loop_rate: 0.03
-  pose_alpha: 0.22
-  position_deadband_m: 0.0015
-  orientation_deadband_deg: 0.35
-```
-
-### GUI Load
-
-The GUI can be CPU-heavy because it renders:
-
-- Live camera preview
-- Six matplotlib motor plots
-- Sensor and motor labels
-
-Current source setting:
-
-```python
-PLOT_UPDATE_INTERVAL_S = 0.25
-```
-
-For lower CPU, try `0.50` or add a plot-disable switch.
-
-### Automatic Command Rate
-
-The Arduino command rate is not fixed. `stewart_node` sends a new command only when:
-
-- Fresh pose input changes enough
-- IK output changes beyond `length_threshold`
-- Command passes logical and physical actuator limits
-- Command is outside `command_deadband_cm`
-- Platform is outside `stop_tolerance_cm`
-
-Relevant YAML:
-
-```yaml
-actuators:
-  length_threshold: 0.08
-
-automatic_control:
-  stop_tolerance_cm: 1.0
-  command_debounce_s: 0.002
-  command_deadband_cm: 0.05
-```
-
-### Logging
-
-Most high-frequency logs are `debug` and are safe unless debug logging is enabled.
-
-For timing tests:
-
-```bash
-ros2 launch stewart_control stewart.launch.py --ros-args --log-level warn
-```
-
-Avoid running control nodes at debug level during real tracking.
-
-## Development Workflow
-
-Formatting and linting tools:
-
-- Black
-- flake8
-- pre-commit
-- clang-format for Arduino
-
-Install hooks:
-
-```bash
-python3 -m pip install --user pre-commit black flake8
-pre-commit install
-```
-
-Run checks:
-
-```bash
-pre-commit run --all-files
-```
-
-Compile-check Python:
-
-```bash
-python3 -m compileall -q src scripts
-```
-
-Build package:
-
-```bash
-source /opt/ros/jazzy/setup.bash
-colcon build --symlink-install --packages-select stewart_control
+  preview_publish_period: 0.075
 ```
 
 ## Troubleshooting
 
-### The GUI Opens but Buttons Do Nothing
+### Installed Code Does Not Match Source
 
-Check that ROS is sourced:
+Rebuild and source:
 
 ```bash
+colcon build --symlink-install --packages-select stewart_control
 source install/setup.bash
-which ros2
 ```
 
-Check runtime recovery state. If recovery is required, automatic/manual motion is blocked until home is confirmed.
+Check package location:
+
+```bash
+ros2 pkg prefix stewart_control
+```
 
 ### Motion Is Blocked
 
-Run homing or confirm recovery:
+Runtime recovery is required. Run homing or confirm home through the GUI:
 
 ```bash
 ros2 launch stewart_control launch_posHome.py
 ```
 
-Or use the GUI recovery/homing tool.
-
-### ArUco Rate Is Low
+### Camera Feed Stalls or ArUco Pose Is Stale
 
 Check:
 
-- Marker is visible during the entire test
-- Lighting is strong
-- Marker is not blurred
-- Marker fills enough pixels
-- Camera exposure is not causing motion blur
-- CPU is not saturated by GUI plotting
-
-Use:
-
-```bash
-python3 scripts/performance_monitor.py --duration 60
-```
-
-### Camera Stalls
+- marker ID and visibility,
+- lighting and focus,
+- USB cable/port,
+- another process using the camera,
+- OpenCV/V4L2 read delays.
 
 Run:
 
 ```bash
 python3 src/stewart_control/test/diagnose_camera_failure.py
 ```
-
-Check for:
-
-- Another process using `/dev/video0`
-- USB/V4L2 kernel warnings
-- Slow OpenCV reads
-- Exposure mode problems
 
 ### Serial Port Fails
 
@@ -800,31 +613,38 @@ If needed:
 sudo usermod -aG dialout "$USER"
 ```
 
-Then log out and back in.
+Log out and back in after changing groups.
 
-### Installed Code Does Not Match Source
+### Orientation Is Stable but Platform Still Moves
 
-Rebuild and source again:
+Check command and feedback:
 
 ```bash
-colcon build --symlink-install --packages-select stewart_control
-source install/setup.bash
+ros2 topic echo /stewart/longueurs
+ros2 topic echo /feedback_motors
 ```
 
-Check which executable is being used:
+If commands are stable but feedback moves, inspect Arduino/motor wiring,
+encoder direction, mechanical slip, and actuator calibration. If commands are
+moving, inspect `/F_pose`, fusion tuning, and automatic-control deadbands.
+
+## Development
+
+Formatting and checks:
 
 ```bash
-ros2 pkg prefix stewart_control
+python3 -m compileall -q src scripts
+python3 -m pip install --user black flake8 pre-commit
+pre-commit run --all-files
+```
+
+Build:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+colcon build --symlink-install --packages-select stewart_control
 ```
 
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
-
-## Maintainer
-
-Package maintainer in metadata:
-
-```text
-Jbantu <jbantu@example.com>
-```
