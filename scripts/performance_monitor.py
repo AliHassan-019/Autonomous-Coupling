@@ -31,6 +31,7 @@ TOPICS = {
     "aruco_orientation": "/aruco_orientation",
     "camera_image": "/camera/image_raw",
     "imu": "/imu_error",
+    "imu_gyro": "/imu_gyro",
     "fusion_orientation": "/F_orientation",
     "fusion_pose": "/F_pose",
     "command": "/stewart/longueurs",

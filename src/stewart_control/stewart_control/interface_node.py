@@ -249,8 +249,9 @@ class MotorPlotWidget(QWidget):
 
 
 class InterfaceGUI(QWidget):
-    PLOT_UPDATE_INTERVAL_S = 0.25
-    CAMERA_UPDATE_INTERVAL_S = 0.08
+    MOTOR_UI_UPDATE_INTERVAL_S = 0.10
+    PLOT_UPDATE_INTERVAL_S = 0.50
+    CAMERA_UPDATE_INTERVAL_S = 0.05
     MOTION_STOP_TIMEOUT_S = 30
     MANUAL_STARTUP_DELAY_MS = 1200
 
@@ -281,6 +282,9 @@ class InterfaceGUI(QWidget):
         self._last_plot_update_t = 0.0
         self._last_camera_update_t = 0.0
         self._latest_camera_msg = None
+        self._latest_consigne = None
+        self._latest_feedback = None
+        self._motor_ui_dirty = False
 
         self._manual_home_timer = QTimer(self)
         self._manual_home_timer.setSingleShot(True)
@@ -291,6 +295,10 @@ class InterfaceGUI(QWidget):
         self._camera_render_timer = QTimer(self)
         self._camera_render_timer.timeout.connect(self._render_latest_camera_frame)
         self._camera_render_timer.start(int(self.CAMERA_UPDATE_INTERVAL_S * 1000))
+
+        self._motor_ui_timer = QTimer(self)
+        self._motor_ui_timer.timeout.connect(self._render_latest_motor_data)
+        self._motor_ui_timer.start(int(self.MOTOR_UI_UPDATE_INTERVAL_S * 1000))
 
         main_layout = QHBoxLayout()
         main_layout.setContentsMargins(10, 10, 10, 10)
@@ -932,23 +940,16 @@ class InterfaceGUI(QWidget):
         if len(msg.data) >= 6:
             self._last_motor_t = self._time.time()
             vals = [round(v, 3) for v in msg.data[:6]]
-            self.label_verins.setText(
-                "C: " + "  ".join([f"V{i + 1}:{v:.3f} cm" for i, v in enumerate(vals)])
-            )
+            self._latest_consigne = vals
+            self._motor_ui_dirty = True
             self.last_consigne = vals
 
     def feedback_callback(self, msg):
         if len(msg.data) >= 6:
             self._last_motor_t = self._time.time()
             vals = [round(v, 3) for v in msg.data[:6]]
-            self.label_feedback.setText(
-                "F: " + "  ".join([f"V{i + 1}:{v:.3f} cm" for i, v in enumerate(vals)])
-            )
-            now = self._time.time()
-            if (now - self._last_plot_update_t) >= self.PLOT_UPDATE_INTERVAL_S:
-                for i in range(6):
-                    self.motor_plots[i].update_plot(self.last_consigne[i], vals[i])
-                self._last_plot_update_t = now
+            self._latest_feedback = vals
+            self._motor_ui_dirty = True
 
     def stewart_status_callback(self, msg):
         if msg is not None and isinstance(msg.data, str):
@@ -971,6 +972,41 @@ class InterfaceGUI(QWidget):
 
     def image_callback(self, msg):
         self._latest_camera_msg = msg
+
+    def _render_latest_motor_data(self):
+        if not self._motor_ui_dirty:
+            return
+
+        consigne = self._latest_consigne
+        feedback = self._latest_feedback
+
+        if consigne is not None:
+            self.label_verins.setText(
+                "C: "
+                + "  ".join(
+                    [f"V{i + 1}:{v:.3f} cm" for i, v in enumerate(consigne)]
+                )
+            )
+
+        if feedback is not None:
+            self.label_feedback.setText(
+                "F: "
+                + "  ".join(
+                    [f"V{i + 1}:{v:.3f} cm" for i, v in enumerate(feedback)]
+                )
+            )
+
+        now = self._time.time()
+        if (
+            consigne is not None
+            and feedback is not None
+            and (now - self._last_plot_update_t) >= self.PLOT_UPDATE_INTERVAL_S
+        ):
+            for i in range(6):
+                self.motor_plots[i].update_plot(consigne[i], feedback[i])
+            self._last_plot_update_t = now
+
+        self._motor_ui_dirty = False
 
     def _render_latest_camera_frame(self):
         msg = self._latest_camera_msg

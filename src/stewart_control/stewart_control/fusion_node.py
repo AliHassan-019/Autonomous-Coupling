@@ -19,6 +19,9 @@ class FusionNode(Node):
         self.sub_imu = self.create_subscription(
             Float32MultiArray, "imu_error", self.imu_callback, 1
         )
+        self.sub_gyro = self.create_subscription(
+            Float32MultiArray, "imu_gyro", self.gyro_callback, 1
+        )
         self.sub_cam = self.create_subscription(
             Float32MultiArray, "aruco_orientation", self.cam_callback, 1
         )
@@ -43,6 +46,12 @@ class FusionNode(Node):
             self.axis_filter_configs[axis]["camera_r"]
             for axis in OrientationKalmanFilter.AXES
         ]
+        self.gyro_measurement_variances = [
+            self.axis_filter_configs[axis]["gyro_r"]
+            for axis in OrientationKalmanFilter.AXES
+        ]
+        self.use_gyro_prediction = bool(fus.get("use_gyro_prediction", True))
+        self.gyro_timeout_s = float(fus.get("gyro_timeout_s", 0.12))
         self.camera_timeout_s = float(
             fus.get("camera_timeout_s", auto_cfg.get("fusion_timeout_s", 0.2))
         )
@@ -53,8 +62,10 @@ class FusionNode(Node):
 
         self.last_position = None
         self.last_imu = None
+        self.last_gyro = None
         self.last_cam = None
         self.last_position_time = None
+        self.last_gyro_time = None
         self.last_cam_time = None
         self.last_filter_time = None
         self.camera_pose_valid = False
@@ -68,6 +79,11 @@ class FusionNode(Node):
             "Using angle-rate Kalman fusion with IMU/camera measurement weighting "
             "and camera outlier rejection."
         )
+        self.get_logger().info(
+            "Gyro prediction is "
+            f"{'enabled' if self.use_gyro_prediction else 'disabled'} "
+            f"with timeout {self.gyro_timeout_s:.3f}s."
+        )
 
     @staticmethod
     def _axis_config(fusion_cfg, axis_name, default_q, default_r):
@@ -79,6 +95,7 @@ class FusionNode(Node):
             "process_rate_q": float(legacy.get("process_rate_q", default_q * 120.0)),
             "imu_r": float(legacy.get("imu_r", legacy.get("r", default_r))),
             "camera_r": float(legacy.get("camera_r", legacy.get("r", default_r))),
+            "gyro_r": float(legacy.get("gyro_r", 4.0)),
             "outlier_threshold_deg": float(legacy.get("outlier_threshold_deg", 8.0)),
             "outlier_recovery_count": int(legacy.get("outlier_recovery_count", 3)),
         }
@@ -100,6 +117,11 @@ class FusionNode(Node):
         self.last_imu = msg.data
         self.compute_fusion()
 
+    def gyro_callback(self, msg):
+        if len(msg.data) >= 3:
+            self.last_gyro = list(msg.data[:3])
+            self.last_gyro_time = time.monotonic()
+
     def cam_callback(self, msg):
         self.last_cam = msg.data
         self.last_cam_time = time.monotonic()
@@ -118,6 +140,14 @@ class FusionNode(Node):
         return (
             now - self.last_position_time <= self.camera_timeout_s
             and now - self.last_cam_time <= self.camera_timeout_s
+        )
+
+    def _gyro_is_fresh(self, now):
+        return (
+            self.use_gyro_prediction
+            and self.last_gyro is not None
+            and self.last_gyro_time is not None
+            and now - self.last_gyro_time <= self.gyro_timeout_s
         )
 
     def _hold_small_orientation_changes(self, orientation):
@@ -168,6 +198,11 @@ class FusionNode(Node):
             )
 
         self.orientation_filter.predict(dt)
+        if self._gyro_is_fresh(now):
+            self.orientation_filter.update_rates(
+                self.last_gyro,
+                self.gyro_measurement_variances,
+            )
         self.orientation_filter.update(
             [wrap_deg(r_imu), wrap_deg(p_imu), wrap_deg(y_imu)],
             self.imu_measurement_variances,
@@ -237,9 +272,14 @@ class FusionNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = FusionNode()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

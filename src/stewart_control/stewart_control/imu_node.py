@@ -70,6 +70,13 @@ def remap_rpy_deg(
     return wrap_rpy_deg(wrapped[list(order)] * signs)
 
 
+def remap_vector(values, axis_order=(0, 1, 2), axis_sign=(1.0, 1.0, 1.0)) -> np.ndarray:
+    vector = np.array(values, dtype=float)
+    order = normalize_axis_order(axis_order)
+    signs = np.array(normalize_axis_signs(axis_sign), dtype=float)
+    return vector[list(order)] * signs
+
+
 def resolve_calibration_path(configured_path: str, filename: str) -> str:
     candidates = []
 
@@ -118,6 +125,7 @@ class IMUPublisher(Node):
         imu_cfg = cfg["imu"]
 
         self.pub_imu = self.create_publisher(Float32MultiArray, "imu_error", 1)
+        self.pub_gyro = self.create_publisher(Float32MultiArray, "imu_gyro", 1)
 
         bus = smbus.SMBus(imu_cfg["i2c_bus"])
         self.imu = MPU9250.MPU9250(bus, imu_cfg["imu_address"])
@@ -138,6 +146,10 @@ class IMUPublisher(Node):
         self.orientation_axis_sign = normalize_axis_signs(
             imu_cfg.get("orientation_axis_sign", [1, 1, 1])
         )
+        self.publish_gyro = bool(imu_cfg.get("publish_gyro", True))
+        self.gyro_units = str(imu_cfg.get("gyro_units", "deg_s")).lower()
+        if self.gyro_units not in ("deg_s", "rad_s"):
+            raise ValueError("imu.gyro_units must be either 'deg_s' or 'rad_s'.")
 
         self.get_logger().info("Single IMU initialized and calibrated.")
         self.get_logger().info(
@@ -155,12 +167,18 @@ class IMUPublisher(Node):
             f"order={list(self.orientation_axis_order)} "
             f"sign={list(self.orientation_axis_sign)}."
         )
+        self.get_logger().info(
+            "IMU gyro publishing is "
+            f"{'enabled' if self.publish_gyro else 'disabled'} "
+            f"with source units '{self.gyro_units}'."
+        )
 
         self.timer = self.create_timer(imu_cfg["publish_rate"], self.publish_imu_error)
 
     def publish_imu_error(self):
         self.imu.readSensor()
         raw_rpy = np.array(compute_rpy(self.imu), dtype=float)
+        raw_gyro = np.array(self.imu.GyroVals, dtype=float)
 
         # Log raw IMU values before any processing (for debugging)
         self.get_logger().debug(
@@ -178,6 +196,19 @@ class IMUPublisher(Node):
             corrected_rpy
         )
 
+        if self.publish_gyro:
+            gyro_dps = remap_vector(
+                raw_gyro,
+                axis_order=self.orientation_axis_order,
+                axis_sign=self.orientation_axis_sign,
+            )
+            if self.gyro_units == "rad_s":
+                gyro_dps = np.rad2deg(gyro_dps)
+
+            gyro_msg = Float32MultiArray()
+            gyro_msg.data = [round(float(value), 3) for value in gyro_dps]
+            self.pub_gyro.publish(gyro_msg)
+
         msg = Float32MultiArray()
         msg.data = [round(roll_abs, 2), round(pitch_abs, 2), round(yaw_abs, 2)]
         self.pub_imu.publish(msg)
@@ -191,9 +222,14 @@ class IMUPublisher(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = IMUPublisher()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":

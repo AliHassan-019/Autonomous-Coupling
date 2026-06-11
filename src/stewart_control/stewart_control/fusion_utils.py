@@ -153,6 +153,26 @@ class AngleRateKalman1D:
         self.rejected_count = 0
         return True
 
+    def update_rate(self, rate_dps, rate_variance):
+        rate_dps = float(rate_dps)
+        rate_variance = max(float(rate_variance), 1e-6)
+
+        if not self.initialized:
+            self.x[1] = rate_dps
+            return False
+
+        H = np.array([[0.0, 1.0]], dtype=float)
+        innovation = rate_dps - self.x[1]
+        S = float((H @ self.P @ H.T)[0, 0] + rate_variance)
+        if S <= 1e-12:
+            return False
+
+        K = (self.P @ H.T)[:, 0] / S
+        self.x = self.x + K * innovation
+        self.x[0] = wrap_deg(self.x[0])
+        self.P = (np.eye(2) - np.outer(K, H[0])) @ self.P
+        return True
+
 
 class OrientationKalmanFilter:
     """Three-axis RPY Kalman filter using angle + angular-rate states."""
@@ -186,6 +206,14 @@ class OrientationKalmanFilter:
                     allow_outlier_recovery=allow_outlier_recovery,
                 )
             )
+        return accepted
+
+    def update_rates(self, rate_measurements, rate_variances):
+        accepted = []
+        for angle_filter, rate, variance in zip(
+            self.filters, rate_measurements, rate_variances
+        ):
+            accepted.append(angle_filter.update_rate(rate, variance))
         return accepted
 
     @property
