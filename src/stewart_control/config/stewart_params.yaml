@@ -55,7 +55,7 @@ aruco:
   single_marker_only: true
   publish_in_base_frame: false
   reference_position_m: [0.0, 0.0, 0.0]
-  reference_orientation_deg: [-173.8, 2.7, -0.8]  # Default pose zero reference
+  reference_orientation_deg: [-180.3, 0.4, 90.7]  # Default pose zero reference
   # Camera axis remapping (similar to IMU) - allows axis swapping/inversion
   orientation_axis_order: [0, 1, 2]  # 
   orientation_axis_sign: [-1, -1, 1] 
@@ -75,22 +75,35 @@ imu:
   calibration_path: "calib2.json"
   orientation_axis_order: [0, 1, 2]
   orientation_axis_sign: [1, 1, 1]
-  reference_orientation_deg: [-0.02, -0.12, 66.43]  # Default pose zero reference
+  reference_orientation_deg: [-2.22, -2.75, -35.56]  # Default pose zero reference
   publish_rate: 0.05
 
 # Sensor fusion
 fusion:
   camera_timeout_s: 0.2
-  orientation_hold_deadband_deg: 0.4
+  max_filter_dt_s: 0.1
+  orientation_hold_deadband_deg: 0.7
   kalman_roll:
-    q: 0.02
-    r: 1.0
+    process_angle_q: 0.008
+    process_rate_q: 1.2
+    imu_r: 1.4
+    camera_r: 2.0
+    outlier_threshold_deg: 5.0
+    outlier_recovery_count: 3
   kalman_pitch:
-    q: 0.02
-    r: 1.0
+    process_angle_q: 0.008
+    process_rate_q: 1.2
+    imu_r: 1.4
+    camera_r: 2.0
+    outlier_threshold_deg: 5.0
+    outlier_recovery_count: 3
   kalman_yaw:
-    q: 0.05
-    r: 2.0
+    process_angle_q: 0.004
+    process_rate_q: 0.8
+    imu_r: 6.0
+    camera_r: 4.0
+    outlier_threshold_deg: 8.0
+    outlier_recovery_count: 4
 
 automatic_control:
   enabled: true
@@ -101,11 +114,11 @@ automatic_control:
   use_marker_orientation: false  
   use_fused_pose: true            
   use_orientation_control: true  
-  command_debounce_s: 0.002
+  command_debounce_s: 0.02
   position_alpha: 0.65
-  orientation_alpha: 0.45
+  orientation_alpha: 0.25
   command_alpha: 0.85
   position_deadband_m: 0.0005
-  orientation_deadband_deg: 0.2
-  command_deadband_cm: 0.05
+  orientation_deadband_deg: 0.5
+  command_deadband_cm: 0.12
   fusion_timeout_s: 0.2

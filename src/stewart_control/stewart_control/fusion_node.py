@@ -6,7 +6,7 @@ from rclpy.node import Node
 from std_msgs.msg import Float32MultiArray
 
 from stewart_control.config_loader import get_config
-from stewart_control.fusion_utils import Kalman1D, wrap_deg
+from stewart_control.fusion_utils import OrientationKalmanFilter, wrap_deg
 
 
 class FusionNode(Node):
@@ -33,21 +33,30 @@ class FusionNode(Node):
         fus = cfg["fusion"]
         auto_cfg = cfg.get("automatic_control", {})
 
-        self.kf_roll = Kalman1D(q=fus["kalman_roll"]["q"], r=fus["kalman_roll"]["r"])
-        self.kf_pitch = Kalman1D(q=fus["kalman_pitch"]["q"], r=fus["kalman_pitch"]["r"])
-        self.kf_yaw = Kalman1D(q=fus["kalman_yaw"]["q"], r=fus["kalman_yaw"]["r"])
+        self.axis_filter_configs = self._load_axis_filter_configs(fus)
+        self.orientation_filter = OrientationKalmanFilter(self.axis_filter_configs)
+        self.imu_measurement_variances = [
+            self.axis_filter_configs[axis]["imu_r"]
+            for axis in OrientationKalmanFilter.AXES
+        ]
+        self.camera_measurement_variances = [
+            self.axis_filter_configs[axis]["camera_r"]
+            for axis in OrientationKalmanFilter.AXES
+        ]
         self.camera_timeout_s = float(
             fus.get("camera_timeout_s", auto_cfg.get("fusion_timeout_s", 0.2))
         )
         self.orientation_hold_deadband_deg = float(
             fus.get("orientation_hold_deadband_deg", 0.4)
         )
+        self.max_filter_dt_s = float(fus.get("max_filter_dt_s", 0.1))
 
         self.last_position = None
         self.last_imu = None
         self.last_cam = None
         self.last_position_time = None
         self.last_cam_time = None
+        self.last_filter_time = None
         self.camera_pose_valid = False
         self.last_published_orientation = None
 
@@ -55,6 +64,31 @@ class FusionNode(Node):
             "Fusion node started. Expecting camera position [x, y, z], absolute IMU "
             "orientation [roll, pitch, yaw], and camera orientation [roll, pitch, yaw]."
         )
+        self.get_logger().info(
+            "Using angle-rate Kalman fusion with IMU/camera measurement weighting "
+            "and camera outlier rejection."
+        )
+
+    @staticmethod
+    def _axis_config(fusion_cfg, axis_name, default_q, default_r):
+        legacy = fusion_cfg.get(f"kalman_{axis_name}", {})
+        return {
+            "process_angle_q": float(
+                legacy.get("process_angle_q", legacy.get("q", default_q))
+            ),
+            "process_rate_q": float(legacy.get("process_rate_q", default_q * 120.0)),
+            "imu_r": float(legacy.get("imu_r", legacy.get("r", default_r))),
+            "camera_r": float(legacy.get("camera_r", legacy.get("r", default_r))),
+            "outlier_threshold_deg": float(legacy.get("outlier_threshold_deg", 8.0)),
+            "outlier_recovery_count": int(legacy.get("outlier_recovery_count", 3)),
+        }
+
+    def _load_axis_filter_configs(self, fusion_cfg):
+        return {
+            "roll": self._axis_config(fusion_cfg, "roll", 0.01, 1.5),
+            "pitch": self._axis_config(fusion_cfg, "pitch", 0.01, 1.5),
+            "yaw": self._axis_config(fusion_cfg, "yaw", 0.01, 5.0),
+        }
 
     def position_callback(self, msg):
         if len(msg.data) >= 3:
@@ -110,6 +144,13 @@ class FusionNode(Node):
         if self.last_imu is None:
             return
 
+        now = time.monotonic()
+        if self.last_filter_time is None:
+            dt = 1e-3
+        else:
+            dt = min(now - self.last_filter_time, self.max_filter_dt_s)
+        self.last_filter_time = now
+
         r_imu, p_imu, y_imu = self.last_imu
         camera_pose_fresh = self._camera_pose_is_fresh()
 
@@ -126,18 +167,32 @@ class FusionNode(Node):
                 f"CAMERA: N/A"
             )
 
-        self.kf_roll.predict()
-        self.kf_pitch.predict()
-        self.kf_yaw.predict()
-        self.kf_roll.update(wrap_deg(r_imu))
-        self.kf_pitch.update(wrap_deg(p_imu))
-        self.kf_yaw.update(wrap_deg(y_imu))
+        self.orientation_filter.predict(dt)
+        self.orientation_filter.update(
+            [wrap_deg(r_imu), wrap_deg(p_imu), wrap_deg(y_imu)],
+            self.imu_measurement_variances,
+            allow_outlier_recovery=True,
+        )
 
         if camera_pose_fresh:
             r_cam, p_cam, y_cam = self.last_cam
-            self.kf_roll.update(wrap_deg(r_cam))
-            self.kf_pitch.update(wrap_deg(p_cam))
-            self.kf_yaw.update(wrap_deg(y_cam))
+            accepted = self.orientation_filter.update(
+                [wrap_deg(r_cam), wrap_deg(p_cam), wrap_deg(y_cam)],
+                self.camera_measurement_variances,
+                allow_outlier_recovery=False,
+            )
+            if not all(accepted):
+                rejected_axes = [
+                    axis
+                    for axis, is_accepted in zip(
+                        OrientationKalmanFilter.AXES, accepted
+                    )
+                    if not is_accepted
+                ]
+                self.get_logger().debug(
+                    "Rejected camera orientation outlier axis/axes: "
+                    f"{', '.join(rejected_axes)}"
+                )
         elif self.camera_pose_valid:
             self.get_logger().warn(
                 "Camera pose is stale or marker detection is lost. "
@@ -145,7 +200,7 @@ class FusionNode(Node):
             )
 
         fused_orientation = self._hold_small_orientation_changes(
-            [self.kf_roll.x, self.kf_pitch.x, self.kf_yaw.x]
+            self.orientation_filter.orientation
         )
 
         msg = Float32MultiArray()
@@ -174,7 +229,8 @@ class FusionNode(Node):
             f"FUSION -> XYZ:{self.last_position if camera_pose_fresh else 'N/A'} "
             f"R:{fused_orientation[0]:.2f} "
             f"P:{fused_orientation[1]:.2f} "
-            f"Y:{fused_orientation[2]:.2f}"
+            f"Y:{fused_orientation[2]:.2f} "
+            f"rates:{[round(value, 2) for value in self.orientation_filter.rates]}"
         )
 
 
