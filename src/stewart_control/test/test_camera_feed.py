@@ -8,8 +8,7 @@ Controls:
   v4l2-ctl -d /dev/video0 -c auto_exposure=1
 v4l2-ctl -d /dev/video0 -c exposure_dynamic_framerate=0
 v4l2-ctl -d /dev/video0 -c exposure_time_absolute=80
-v4l2-ctl -d /dev/video0 -c gain=0
-v4l2-ctl -d /dev/video0 -c white_balance_automatic=0
+  v4l2-ctl -d /dev/video0 -c white_balance_automatic=0
 v4l2-ctl -d /dev/video0 -c white_balance_temperature=4600
 v4l2-ctl -d /dev/video0 -c focus_automatic_continuous=0
 v4l2-ctl -d /dev/video0 -c focus_absolute=50

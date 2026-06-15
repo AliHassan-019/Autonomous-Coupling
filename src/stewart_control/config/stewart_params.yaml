@@ -128,3 +128,5 @@ automatic_control:
   orientation_deadband_deg: 0.5
   command_deadband_cm: 0.12
   fusion_timeout_s: 0.2
+  blind_approach_enabled: true
+  blind_approach_distance_cm: 4.0

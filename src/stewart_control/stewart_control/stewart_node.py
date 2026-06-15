@@ -124,6 +124,15 @@ class StewartNode(Node):
             auto_cfg.get("orientation_deadband_deg", 0.35)
         )
         self.command_deadband_cm = float(auto_cfg.get("command_deadband_cm", 0.12))
+        self.blind_approach_enabled = bool(
+            auto_cfg.get("blind_approach_enabled", False)
+        )
+        self.blind_approach_distance_cm = float(
+            auto_cfg.get("blind_approach_distance_cm", 4.0)
+        )
+        self.blind_approach_armed = False
+        self.blind_approach_done = False
+        self.last_position_update_time = 0.0
         self.pending_update = False
         self.last_input_time = 0.0
         self.last_stop_state = False
@@ -153,6 +162,12 @@ class StewartNode(Node):
         # Timer pour lecture série
         self.create_timer(act["feedback_timer_period"], self.read_feedback)
         self.create_timer(0.01, self.flush_pending_update)
+        self.create_timer(0.02, self.check_blind_approach)
+        self.get_logger().info(
+            "Blind final approach is "
+            f"{'enabled' if self.blind_approach_enabled else 'disabled'} "
+            f"with distance {self.blind_approach_distance_cm:.2f} cm."
+        )
 
     def position_callback(self, msg):
         if len(msg.data) >= 3:
@@ -205,6 +220,7 @@ class StewartNode(Node):
         self.filtered_position = self._smooth_vector(
             self.filtered_position, self.position, self.position_alpha
         )
+        self._update_blind_approach_state()
         self.schedule_update()
 
     def _update_selected_pose(self, position, orientation):
@@ -216,6 +232,7 @@ class StewartNode(Node):
         self.filtered_orientation = self._smooth_vector(
             self.filtered_orientation, self.orientation, self.orientation_alpha
         )
+        self._update_blind_approach_state()
         self.schedule_update()
 
     def _update_selected_orientation(self, orientation):
@@ -266,6 +283,59 @@ class StewartNode(Node):
             self.orientation_deadband_deg,
         )
 
+    def _update_blind_approach_state(self):
+        self.last_position_update_time = time.monotonic()
+        if not self.blind_approach_enabled:
+            return
+
+        distance_cm = float(np.linalg.norm(self.filtered_position) * 100.0)
+        if distance_cm > self.blind_approach_distance_cm:
+            self.blind_approach_armed = False
+            self.blind_approach_done = False
+            return
+
+        if distance_cm < self.stop_tolerance_cm:
+            self.blind_approach_armed = False
+            return
+
+        if not self.blind_approach_armed and not self.blind_approach_done:
+            self.get_logger().info(
+                "Blind final approach armed from last camera pose: "
+                f"{distance_cm:.2f} cm <= {self.blind_approach_distance_cm:.2f} cm."
+            )
+        self.blind_approach_armed = True
+
+    def check_blind_approach(self):
+        if (
+            not self.blind_approach_enabled
+            or not self.blind_approach_armed
+            or self.blind_approach_done
+            or self.last_position_update_time <= 0.0
+        ):
+            return
+
+        if (time.monotonic() - self.last_position_update_time) <= self.fusion_timeout_s:
+            return
+
+        distance_cm = float(np.linalg.norm(self.filtered_position) * 100.0)
+        if distance_cm < self.stop_tolerance_cm:
+            self.blind_approach_armed = False
+            return
+
+        if distance_cm > self.blind_approach_distance_cm:
+            self.blind_approach_armed = False
+            return
+
+        text = (
+            "Camera pose lost inside blind final approach window. "
+            f"Sending one bounded final command from last pose ({distance_cm:.2f} cm)."
+        )
+        self.get_logger().warn(text)
+        self._publish_status(text)
+        self.blind_approach_done = True
+        self.blind_approach_armed = False
+        self.update_actuators(blind_approach=True, force_send=True)
+
     def _publish_status(self, message):
         try:
             status_msg = String(data=message)
@@ -297,7 +367,7 @@ class StewartNode(Node):
         self.pending_update = False
         self.update_actuators()
 
-    def update_actuators(self):
+    def update_actuators(self, blind_approach=False, force_send=False):
         if not self.motion_enabled:
             self.get_logger().warn("Motion blocked: runtime state requires recovery.")
             return
@@ -318,6 +388,16 @@ class StewartNode(Node):
             return
 
         self.last_stop_state = False
+
+        if blind_approach and current_distance_cm > self.blind_approach_distance_cm:
+            text = (
+                "Blind final approach cancelled: last pose is outside configured "
+                f"distance ({current_distance_cm:.2f} cm > "
+                f"{self.blind_approach_distance_cm:.2f} cm)."
+            )
+            self.get_logger().warn(text)
+            self._publish_status(text)
+            return
 
         trans = (
             -self.control_position if self.invert_marker_pose else self.control_position
@@ -340,6 +420,9 @@ class StewartNode(Node):
             for c, l in zip(logical_deplacement, self.last_deplacement)
         )
 
+        if force_send:
+            send_update = True
+
         if send_update:
             if not self.calibration.within_logical_range(logical_deplacement):
                 violation = self.calibration.logical_violation_message(logical_deplacement)
@@ -354,9 +437,10 @@ class StewartNode(Node):
             physical_targets = self.calibration.logical_to_relative_targets(
                 logical_deplacement, self.home_vector
             )
-            physical_targets = self._smooth_command_targets(physical_targets)
+            if not blind_approach:
+                physical_targets = self._smooth_command_targets(physical_targets)
 
-            if np.all(
+            if not force_send and np.all(
                 np.abs(physical_targets - self.last_sent_targets) < self.command_deadband_cm
             ):
                 self.last_deplacement = logical_deplacement.copy()
@@ -371,7 +455,12 @@ class StewartNode(Node):
                 self.ser.write((consigne + "\n").encode())
                 self.runtime_state.record_command(physical_targets)
                 self.last_sent_targets = physical_targets.copy()
-                self.get_logger().debug(f"Consigne envoyée : {consigne}")
+                if blind_approach:
+                    self.get_logger().warn(
+                        f"Blind final approach command sent: {consigne}"
+                    )
+                else:
+                    self.get_logger().debug(f"Consigne envoyée : {consigne}")
                 self._set_limit_status(False)
             else:
                 violation = self.calibration.relative_violation_message(
