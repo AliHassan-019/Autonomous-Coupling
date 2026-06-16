@@ -287,6 +287,9 @@ class MotorTestInterface(QWidget):
         self.zero_btn = make_button("Send Home Vector", "#5e6a82", "#6c7892")
         self.zero_btn.clicked.connect(self.send_selected_zero)
         self.zero_btn.setEnabled(False)
+        self.reverse_travel_btn = make_button("Flip Travel +/-10", "#5e6a82", "#6c7892")
+        self.reverse_travel_btn.clicked.connect(self.toggle_selected_travel_direction)
+        self.reverse_travel_btn.setEnabled(False)
 
         jog_row = QHBoxLayout()
         jog_row.addWidget(self.jog_minus_btn)
@@ -298,6 +301,7 @@ class MotorTestInterface(QWidget):
         command_form.addRow(self.send_btn)
         command_form.addRow(jog_row)
         command_form.addRow(self.zero_btn)
+        command_form.addRow(self.reverse_travel_btn)
         top_layout.addWidget(command_box, 1)
 
         homing_box = card("Calibration Status")
@@ -306,7 +310,10 @@ class MotorTestInterface(QWidget):
         homing_layout.setContentsMargins(12, 18, 12, 12)
         homing_layout.setSpacing(10)
 
-        homing_help = QLabel("Save the selected motor at its minimum position.")
+        homing_help = QLabel(
+            "Save the selected motor at home, then flip travel if its full stroke "
+            "is home - 10 cm instead of home + 10 cm."
+        )
         homing_help.setWordWrap(True)
         homing_help.setStyleSheet(f"color: {TEXT_SECONDARY};")
         homing_layout.addWidget(homing_help)
@@ -419,15 +426,24 @@ class MotorTestInterface(QWidget):
             max_item = QTableWidgetItem(
                 "-" if max_value is None else f"{float(max_value):.2f} cm"
             )
-            done = min_value is not None
-            status_item = QTableWidgetItem("Saved" if done else "Pending")
+            done = min_value is not None and max_value is not None
+            if done:
+                span = float(max_value) - float(min_value)
+                direction = "+10" if span >= 0.0 else "-10"
+                status_text = f"Saved ({direction})"
+            else:
+                status_text = "Pending"
+            status_item = QTableWidgetItem(status_text)
             status_item.setForeground(Qt.white if done else Qt.lightGray)
             self.homing_table.setItem(idx, 0, motor_item)
             self.homing_table.setItem(idx, 1, min_item)
             self.homing_table.setItem(idx, 2, max_item)
             self.homing_table.setItem(idx, 3, status_item)
 
-        complete = all(value is not None for value in self.homing_min)
+        complete = all(
+            min_value is not None and max_value is not None
+            for min_value, max_value in zip(self.homing_min, self.homing_max)
+        )
         self.apply_homing_btn.setEnabled(complete)
         saved_count = sum(value is not None for value in self.homing_min)
         self.progress_label.setText(f"{saved_count} of 6 motors saved")
@@ -458,6 +474,7 @@ class MotorTestInterface(QWidget):
         self.jog_plus_btn.setEnabled(enabled)
         self.zero_btn.setEnabled(enabled)
         self.capture_min_btn.setEnabled(enabled)
+        self.reverse_travel_btn.setEnabled(enabled)
 
     def set_connection_state(self, connected):
         self.connect_btn.setEnabled(not connected)
@@ -553,6 +570,31 @@ class MotorTestInterface(QWidget):
     def send_selected_zero(self):
         self.send_vector(self.build_vector(0.0), "Selected motor zero sent")
 
+    def toggle_selected_travel_direction(self):
+        idx = self.selected_motor_index
+        home_value = self.homing_min[idx]
+        if home_value is None:
+            QMessageBox.warning(
+                self,
+                "Home Required",
+                "Save the selected motor home position before flipping travel.",
+            )
+            return
+
+        home_value = float(home_value)
+        current_max = self.homing_max[idx]
+        if current_max is not None and float(current_max) < home_value:
+            self.homing_max[idx] = round(home_value + self.HOMING_SPAN_CM, 2)
+            direction = "+10 cm"
+        else:
+            self.homing_max[idx] = round(home_value - self.HOMING_SPAN_CM, 2)
+            direction = "-10 cm"
+
+        self.refresh_homing_table()
+        self.append_log(
+            f"Motor {idx + 1} travel direction set to {direction} from home."
+        )
+
     def capture_current_minimum(self):
         if self.ser is None:
             QMessageBox.warning(self, "Serial Required", "Connect to the controller first.")
@@ -567,20 +609,49 @@ class MotorTestInterface(QWidget):
 
         idx = self.selected_motor_index
         current_feedback = round(float(self.last_feedback[idx]), 2)
+        current_max = self.homing_max[idx]
+        direction = (
+            -1.0
+            if current_max is not None and float(current_max) < current_feedback
+            else 1.0
+        )
         self.homing_min[idx] = current_feedback
-        self.homing_max[idx] = round(current_feedback + self.HOMING_SPAN_CM, 2)
+        self.homing_max[idx] = round(
+            current_feedback + direction * self.HOMING_SPAN_CM,
+            2,
+        )
         self.refresh_homing_table()
         self.append_log(
             f"Saved Motor {idx + 1} minimum at {current_feedback:.2f} cm "
-            f"-> maximum auto-set to {self.homing_max[idx]:.2f} cm"
+            f"-> travel limit set to {self.homing_max[idx]:.2f} cm"
         )
 
     def apply_homing_calibration(self):
-        if not all(value is not None for value in self.homing_min):
+        if not all(
+            min_value is not None and max_value is not None
+            for min_value, max_value in zip(self.homing_min, self.homing_max)
+        ):
             QMessageBox.warning(
                 self,
                 "Incomplete Homing",
-                "Save a minimum value for all six motors first.",
+                "Save a home value and travel limit for all six motors first.",
+            )
+            return
+
+        invalid_spans = []
+        for idx, (min_value, max_value) in enumerate(
+            zip(self.homing_min, self.homing_max)
+        ):
+            span = float(max_value) - float(min_value)
+            if abs(abs(span) - self.HOMING_SPAN_CM) > 1e-6:
+                invalid_spans.append(f"Motor {idx + 1}: {span:+.2f} cm")
+
+        if invalid_spans:
+            QMessageBox.warning(
+                self,
+                "Invalid Travel",
+                "Each motor travel must be exactly +10.00 cm or -10.00 cm.\n"
+                + "\n".join(invalid_spans),
             )
             return
 
@@ -601,7 +672,7 @@ class MotorTestInterface(QWidget):
         QMessageBox.information(
             self,
             "Homing Saved",
-            "Motor minimum values were saved. Each maximum was set to minimum + 10.00 cm.\n"
+            "Motor home values were saved. Each travel limit is home +/-10.00 cm.\n"
             "Restart the motion nodes so they reload the updated calibration.",
         )
 

@@ -28,6 +28,7 @@ class StewartNode(Node):
         ser_cfg = cfg["serial"]
         act = cfg["actuators"]
         auto_cfg = cfg.get("automatic_control", {})
+        
 
         # Publisher pour les longueurs calculées à envoyer à l'Arduino
         self.publisher_ = self.create_publisher(
