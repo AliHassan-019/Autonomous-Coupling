@@ -22,8 +22,8 @@ class ActuatorCalibration:
         self.logical_min_cm = float(logical_min_cm)
         self.logical_max_cm = float(logical_max_cm)
 
-        if np.any(self.motor_max_cm <= self.motor_min_cm):
-            raise ValueError("Every motor max must be strictly greater than its min.")
+        if np.any(np.isclose(self.motor_max_cm, self.motor_min_cm)):
+            raise ValueError("Every motor max must be different from its min.")
 
         if self.logical_max_cm <= self.logical_min_cm:
             raise ValueError("logical_max_cm must be strictly greater than logical_min_cm.")
@@ -53,6 +53,14 @@ class ActuatorCalibration:
     def motor_span_cm(self):
         return self.motor_max_cm - self.motor_min_cm
 
+    @property
+    def motor_lower_cm(self):
+        return np.minimum(self.motor_min_cm, self.motor_max_cm)
+
+    @property
+    def motor_upper_cm(self):
+        return np.maximum(self.motor_min_cm, self.motor_max_cm)
+
     def within_logical_range(self, logical_targets_cm):
         logical_targets = self._as_vector(logical_targets_cm, "logical_targets_cm")
         return bool(
@@ -63,7 +71,8 @@ class ActuatorCalibration:
     def within_limits(self, targets_cm):
         targets = self._as_vector(targets_cm, "targets_cm")
         return bool(
-            np.all(targets >= self.motor_min_cm) and np.all(targets <= self.motor_max_cm)
+            np.all(targets >= self.motor_lower_cm)
+            and np.all(targets <= self.motor_upper_cm)
         )
 
     def clamp_logical_targets(self, logical_targets_cm):
@@ -72,7 +81,7 @@ class ActuatorCalibration:
 
     def clamp_targets(self, targets_cm):
         targets = self._as_vector(targets_cm, "targets_cm")
-        return np.clip(targets, self.motor_min_cm, self.motor_max_cm)
+        return np.clip(targets, self.motor_lower_cm, self.motor_upper_cm)
 
     def logical_to_physical(self, logical_targets_cm):
         """Map common logical stroke values to calibrated per-motor positions."""
@@ -94,12 +103,14 @@ class ActuatorCalibration:
     def relative_min_cm(self, reference_logical_cm=None):
         if reference_logical_cm is None:
             reference_logical_cm = [self.logical_min_cm] * self.MOTOR_COUNT
-        return self.motor_min_cm - self.logical_to_physical(reference_logical_cm)
+        reference = self.logical_to_physical(reference_logical_cm)
+        return np.minimum(self.motor_min_cm - reference, self.motor_max_cm - reference)
 
     def relative_max_cm(self, reference_logical_cm=None):
         if reference_logical_cm is None:
             reference_logical_cm = [self.logical_min_cm] * self.MOTOR_COUNT
-        return self.motor_max_cm - self.logical_to_physical(reference_logical_cm)
+        reference = self.logical_to_physical(reference_logical_cm)
+        return np.maximum(self.motor_min_cm - reference, self.motor_max_cm - reference)
 
     def within_relative_limits(self, targets_cm, reference_logical_cm=None):
         targets = self._as_vector(targets_cm, "targets_cm")
@@ -142,8 +153,8 @@ class ActuatorCalibration:
         targets = self._as_vector(targets_cm, "targets_cm")
         violations = []
         for idx, value in enumerate(targets):
-            lower = self.motor_min_cm[idx]
-            upper = self.motor_max_cm[idx]
+            lower = self.motor_lower_cm[idx]
+            upper = self.motor_upper_cm[idx]
             if value < lower or value > upper:
                 violations.append(
                     f"M{idx + 1}={value:.2f} cm outside [{lower:.2f}, {upper:.2f}]"

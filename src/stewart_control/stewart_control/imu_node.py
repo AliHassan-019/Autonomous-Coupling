@@ -139,6 +139,7 @@ class IMUPublisher(Node):
         self.imu.loadCalibDataFromFile(calibration_path)
         self.reference_orientation = wrap_rpy_deg(
             imu_cfg.get("reference_orientation_deg", [0.0, 0.0, 0.0])
+            
         )
         self.orientation_axis_order = normalize_axis_order(
             imu_cfg.get("orientation_axis_order", [0, 1, 2])
@@ -147,6 +148,7 @@ class IMUPublisher(Node):
             imu_cfg.get("orientation_axis_sign", [1, 1, 1])
         )
         self.publish_gyro = bool(imu_cfg.get("publish_gyro", True))
+
         self.gyro_units = str(imu_cfg.get("gyro_units", "deg_s")).lower()
         if self.gyro_units not in ("deg_s", "rad_s"):
             raise ValueError("imu.gyro_units must be either 'deg_s' or 'rad_s'.")

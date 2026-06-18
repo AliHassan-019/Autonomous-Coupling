@@ -115,6 +115,13 @@ def draw_marker_boxes(frame, corners):
         cv2.polylines(frame, [points], isClosed=True, color=(0, 255, 0), thickness=2)
 
 
+def detect_markers(gray, dictionary, parameters):
+    if hasattr(aruco, "ArucoDetector"):
+        detector = aruco.ArucoDetector(dictionary, parameters)
+        return detector.detectMarkers(gray)
+    return aruco.detectMarkers(gray, dictionary, parameters=parameters)
+
+
 class ArucoRelativePose(Node):
     CAMERA_READ_WARN_S = 0.5
     CAMERA_REOPEN_DELAY_S = 0.25
@@ -175,7 +182,10 @@ class ArucoRelativePose(Node):
             return
 
         # ------ ArUco ------
-        aruco_dict_id = getattr(aruco, aruco_cfg["dictionary"])
+        self.aruco_dictionary_name = str(aruco_cfg.get("dictionary", "DICT_4X4_1000"))
+        aruco_dict_id = getattr(aruco, self.aruco_dictionary_name, None)
+        if aruco_dict_id is None:
+            raise ValueError(f"Unknown ArUco dictionary: {self.aruco_dictionary_name}")
         self.aruco_dict = aruco.getPredefinedDictionary(aruco_dict_id)
         self.parameters = create_detector_parameters()
 
@@ -220,6 +230,13 @@ class ArucoRelativePose(Node):
         # IDs
         self.fixed_id = aruco_cfg["fixed_marker_id"]
         self.mobile_id = aruco_cfg.get("moving_marker_id", aruco_cfg["mobile_marker_id"])
+        self.get_logger().info(
+            "ArUco target configuration: "
+            f"dictionary={self.aruco_dictionary_name}, "
+            f"target_marker_id={self.mobile_id}, "
+            f"marker_size={self.marker_size:.6f} m, "
+            f"single_marker_only={self.single_marker_only}."
+        )
 
         # Timer ROS2
         self.timer = self.create_timer(aruco_cfg["loop_rate"], self.loop)
@@ -453,9 +470,7 @@ class ArucoRelativePose(Node):
             return
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        corners, ids, _ = aruco.detectMarkers(
-            gray, self.aruco_dict, parameters=self.parameters
-        )
+        corners, ids, _ = detect_markers(gray, self.aruco_dict, self.parameters)
 
         camera_ready = False
 
