@@ -55,7 +55,7 @@ aruco:
   single_marker_only: true
   publish_in_base_frame: false
   reference_position_m: [0.0, 0.0, 0.0]
-  reference_orientation_deg: [-177.4, 1.7, 91.6]  # Default pose zero reference
+  reference_orientation_deg: [-180.2, -5.9, 89.6]  # Default pose zero reference
   # Camera axis remapping (similar to IMU) - allows axis swapping/inversion
   orientation_axis_order: [0, 1, 2]  # 
   orientation_axis_sign: [-1, -1, 1] 
@@ -74,7 +74,7 @@ imu:
   calibration_path: "calib2.json"
   orientation_axis_order: [0, 1, 2]
   orientation_axis_sign: [1, 1, 1]
-  reference_orientation_deg: [-0.26, 0.04, -66.05]  # Default pose zero reference
+  reference_orientation_deg: [-0.92, -3.62, -42.30]  # Default pose zero reference
   publish_gyro: true
   gyro_units: "deg_s"
   publish_rate: 0.05
