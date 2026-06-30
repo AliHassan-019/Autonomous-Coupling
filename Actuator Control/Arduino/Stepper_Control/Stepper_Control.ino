@@ -13,9 +13,9 @@ const float actuatorLengthCm = 81.0;
 // 680 * commanded / actual = 680 * 10 / 16 = 425 steps/cm.
 const float stepsPerCm = 425.0;
 
-const float defaultFullStepSpeed = 100.0;
-const float minFullStepSpeed = 20.0;
-const float maxFullStepSpeed = 180.0;
+const float defaultFullStepSpeed = 150.0;
+const float minFullStepSpeed = 100.0;
+const float maxFullStepSpeed = 300.0;
 float currentFullStepSpeed = defaultFullStepSpeed;
 float currentSpeedStepsPerSecond = defaultFullStepSpeed * microstepFactor;
 
