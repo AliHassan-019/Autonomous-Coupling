@@ -10,7 +10,7 @@ import serial.tools.list_ports
 BAUD_RATE = 115200
 ACTUATOR_MIN_CM = 0.0
 ACTUATOR_MAX_CM = 81.0
-MIN_SPEED =100
+MIN_SPEED = 100
 MAX_SPEED = 300
 DEFAULT_SPEED = 150
 
@@ -19,8 +19,8 @@ class StepperMotorGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Stepper Motor Control")
-        self.root.geometry("620x390")
-        self.root.minsize(580, 360)
+        self.root.geometry("700x450")
+        self.root.resizable(False, False)
 
         self.ser = None
         self.connected = False
@@ -47,62 +47,60 @@ class StepperMotorGUI:
         style.configure(".", font=("Segoe UI", 10), background="#f5f7fa")
         style.configure("TFrame", background="#f5f7fa")
         style.configure("Panel.TFrame", background="#ffffff")
-        style.configure("Title.TLabel", font=("Segoe UI", 20, "bold"), foreground="#111827", background="#f5f7fa")
-        style.configure("Muted.TLabel", foreground="#667085", background="#f5f7fa")
+        style.configure("Title.TLabel", font=("Segoe UI", 17, "bold"), foreground="#111827", background="#f5f7fa")
+        style.configure("Muted.TLabel", font=("Segoe UI", 9), foreground="#667085", background="#f5f7fa")
         style.configure("PanelTitle.TLabel", font=("Segoe UI", 11, "bold"), foreground="#111827", background="#ffffff")
         style.configure("PanelText.TLabel", foreground="#344054", background="#ffffff")
-        style.configure("Metric.TLabel", font=("Segoe UI", 22, "bold"), foreground="#111827", background="#ffffff")
         style.configure("Status.TLabel", font=("Segoe UI", 10, "bold"), foreground="#b42318", background="#ffffff")
 
-        style.configure("TButton", padding=(14, 8), background="#eef2f6", foreground="#111827")
+        style.configure("TButton", padding=(10, 5), background="#eef2f6", foreground="#111827")
         style.map("TButton", background=[("active", "#e3e8ef"), ("disabled", "#f2f4f7")])
         style.configure("Primary.TButton", background="#2563eb", foreground="#ffffff")
         style.map("Primary.TButton", background=[("active", "#1d4ed8"), ("disabled", "#c7d2fe")])
         style.configure("Danger.TButton", background="#dc2626", foreground="#ffffff")
         style.map("Danger.TButton", background=[("active", "#b91c1c"), ("disabled", "#fecaca")])
-        style.configure("TEntry", fieldbackground="#ffffff", padding=8)
-        style.configure("TCombobox", fieldbackground="#ffffff", padding=6)
+        style.configure("TEntry", fieldbackground="#ffffff", padding=5)
+        style.configure("TCombobox", fieldbackground="#ffffff", padding=4)
 
     def build_layout(self):
-        outer = ttk.Frame(self.root, padding=22)
+        outer = ttk.Frame(self.root, padding=16)
         outer.grid(row=0, column=0, sticky="nsew")
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
         outer.columnconfigure(0, weight=1)
-        outer.rowconfigure(3, weight=1)
 
         ttk.Label(outer, text="Stepper Motor Control", style="Title.TLabel").grid(row=0, column=0, sticky="w")
         ttk.Label(outer, text="Speed, distance, homing, and stop controls.", style="Muted.TLabel").grid(
-            row=1, column=0, sticky="w", pady=(3, 18)
+            row=1, column=0, sticky="w", pady=(2, 12)
         )
 
         connection = self.panel(outer)
-        connection.grid(row=2, column=0, sticky="ew", pady=(0, 14))
+        connection.grid(row=2, column=0, sticky="ew", pady=(0, 10))
         connection.columnconfigure(1, weight=1)
 
-        ttk.Label(connection, text="Connection", style="PanelTitle.TLabel").grid(row=0, column=0, sticky="w", padx=16, pady=(14, 10))
-        ttk.Label(connection, textvariable=self.connection_var, style="Status.TLabel").grid(row=0, column=3, sticky="e", padx=16, pady=(14, 10))
+        ttk.Label(connection, text="Connection", style="PanelTitle.TLabel").grid(row=0, column=0, sticky="w", padx=12, pady=(10, 8))
+        ttk.Label(connection, textvariable=self.connection_var, style="Status.TLabel").grid(row=0, column=3, sticky="e", padx=12, pady=(10, 8))
 
-        ttk.Label(connection, text="Port", style="PanelText.TLabel").grid(row=1, column=0, sticky="w", padx=(16, 8), pady=(0, 16))
+        ttk.Label(connection, text="Port", style="PanelText.TLabel").grid(row=1, column=0, sticky="w", padx=(12, 8), pady=(0, 12))
         self.port_combo = ttk.Combobox(connection, textvariable=self.port_var, state="readonly", width=18)
-        self.port_combo.grid(row=1, column=1, sticky="ew", padx=(0, 8), pady=(0, 16))
-        ttk.Button(connection, text="Refresh", command=self.refresh_ports).grid(row=1, column=2, sticky="e", padx=(0, 8), pady=(0, 16))
+        self.port_combo.grid(row=1, column=1, sticky="ew", padx=(0, 8), pady=(0, 12))
+        ttk.Button(connection, text="Refresh", command=self.refresh_ports).grid(row=1, column=2, sticky="e", padx=(0, 8), pady=(0, 12))
         self.connect_button = ttk.Button(connection, text="Connect", command=self.toggle_connection, style="Primary.TButton")
-        self.connect_button.grid(row=1, column=3, sticky="e", padx=(0, 16), pady=(0, 16))
+        self.connect_button.grid(row=1, column=3, sticky="e", padx=(0, 12), pady=(0, 12))
 
         notification = self.panel(outer)
-        notification.grid(row=3, column=0, sticky="ew", pady=(0, 14))
+        notification.grid(row=3, column=0, sticky="ew", pady=(0, 10))
         ttk.Label(notification, textvariable=self.notification_var, style="PanelText.TLabel").grid(
-            row=0, column=0, sticky="w", padx=16, pady=12
+            row=0, column=0, sticky="w", padx=12, pady=8
         )
 
         controls = self.panel(outer)
         controls.grid(row=4, column=0, sticky="nsew")
         controls.columnconfigure(1, weight=1)
 
-        ttk.Label(controls, text="Motion Control", style="PanelTitle.TLabel").grid(row=0, column=0, sticky="w", padx=18, pady=(18, 14))
+        ttk.Label(controls, text="Motion Control", style="PanelTitle.TLabel").grid(row=0, column=0, sticky="w", padx=12, pady=(12, 8))
 
-        ttk.Label(controls, text="Motor Speed", style="PanelText.TLabel").grid(row=1, column=0, sticky="w", padx=18, pady=8)
+        ttk.Label(controls, text="Motor Speed", style="PanelText.TLabel").grid(row=1, column=0, sticky="w", padx=12, pady=5)
         self.speed_slider = ttk.Scale(
             controls,
             from_=MIN_SPEED,
@@ -111,21 +109,21 @@ class StepperMotorGUI:
             variable=self.speed_var,
             command=self.update_speed_label,
         )
-        self.speed_slider.grid(row=1, column=1, sticky="ew", pady=8)
+        self.speed_slider.grid(row=1, column=1, sticky="ew", pady=5)
         ttk.Label(controls, textvariable=self.speed_display_var, style="PanelText.TLabel", width=13).grid(
-            row=1, column=2, sticky="e", padx=(18, 8), pady=8
+            row=1, column=2, sticky="e", padx=(12, 8), pady=5
         )
         self.speed_button = ttk.Button(controls, text="Set Speed", command=self.apply_speed)
-        self.speed_button.grid(row=1, column=3, sticky="e", padx=(0, 18), pady=8)
+        self.speed_button.grid(row=1, column=3, sticky="e", padx=(0, 12), pady=5)
 
-        ttk.Label(controls, text="Distance", style="PanelText.TLabel").grid(row=2, column=0, sticky="w", padx=18, pady=8)
+        ttk.Label(controls, text="Distance", style="PanelText.TLabel").grid(row=2, column=0, sticky="w", padx=12, pady=5)
         self.distance_entry = ttk.Entry(controls, textvariable=self.distance_var, width=12)
-        self.distance_entry.grid(row=2, column=1, sticky="ew", pady=8)
+        self.distance_entry.grid(row=2, column=1, sticky="ew", pady=5)
         self.distance_entry.bind("<Return>", lambda _event: self.move_to_distance())
-        ttk.Label(controls, text="cm", style="PanelText.TLabel").grid(row=2, column=2, sticky="e", padx=18, pady=8)
+        ttk.Label(controls, text="cm", style="PanelText.TLabel").grid(row=2, column=2, sticky="e", padx=12, pady=5)
 
         buttons = ttk.Frame(controls, style="Panel.TFrame")
-        buttons.grid(row=3, column=0, columnspan=4, sticky="ew", padx=18, pady=(22, 18))
+        buttons.grid(row=3, column=0, columnspan=4, sticky="ew", padx=12, pady=(12, 12))
         buttons.columnconfigure(0, weight=1)
         buttons.columnconfigure(1, weight=1)
         buttons.columnconfigure(2, weight=1)
