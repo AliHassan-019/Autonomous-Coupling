@@ -5,7 +5,7 @@
   <version>0.1.0</version>
   <description>ROS2 control system for Stewart platform with IMU fusion and ArUco vision feedback</description>
   <maintainer email="jbantu@example.com">Jbantu</maintainer>
-  <license>Apache-2.0</license>
+  <license>MIT</license>
 
   <depend>rclpy</depend>
   <depend>std_msgs</depend>

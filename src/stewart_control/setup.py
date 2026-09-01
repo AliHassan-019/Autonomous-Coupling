@@ -22,7 +22,7 @@ setup(
         "ROS2 control system for Stewart platform"
         " with IMU fusion and ArUco vision feedback"
     ),
-    license="Apache-2.0",
+    license="MIT",
     entry_points={
         "console_scripts": [
             "imu_node=stewart_control.imu_node:main",

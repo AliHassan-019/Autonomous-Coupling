@@ -9,6 +9,12 @@ __pycache__/
 *.pyo
 *.pyd
 *.egg-info/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # CMake
 CMakeFiles/
@@ -18,6 +24,7 @@ Makefile
 
 # VSCode
 .vscode/
+.idea/
 
 # Arduino compiled files
 Arduino/*.hex
@@ -27,3 +34,7 @@ Arduino/*.bin
 *.swp
 *.tmp
 *.bak
+.DS_Store
+Thumbs.db
+performance_logs/
+comparison_graphs/
